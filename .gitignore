@@ -1,0 +1,51 @@
+# ── 个人配置与持仓数据（勿提交）──
+holdings.csv
+accounts.csv
+manual_values.json
+passthrough.json
+cashflow.json
+cashflow.bak.json
+insurance_cashvalue.csv
+subscriptions.json
+subscriptions.bak.json
+insurance.json
+insurance.bak.json
+
+# ── 自动生成 / 运行时产出 ──
+history.csv
+history.bak.csv
+history_full.csv
+history_full.bak.csv
+holdings_history.csv
+cashflow_history.csv
+cashflow_history.bak.csv
+latest_snapshot.json
+quotes_cache.json
+klines_cache.json
+icons_cache/
+*.html
+!templates/*.html
+run.log
+mitm.log
+*.out
+
+# ── 含个人财务信息的文档 ──
+docs/portfolio-snapshot.md
+docs/strategy-log.md
+
+# ── IDE / 本地 ──
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+
+# ── 统一存储层（sqlite 后端与配置，均含个人数据/本机选择）──
+panorama.db
+storage.json
+_tests_*
+_t_*.json
+_t_*.csv
+*.bak.json
+*.bak.csv
+loans.json
+loans.bak.json

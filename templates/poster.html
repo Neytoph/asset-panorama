@@ -1,0 +1,1469 @@
+<!-- @dsCard group="资产全景看板" name="V3 · 色块海报" subtitle="新粗野主义 · 功能分区色 · 配置色块 hover heatmap + FLIP 下钻 · 数据驱动全模块" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>资产全景 · POSTER</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --paper: #f4f1ea; --ink: #111111;
+    --c-prop: #4a3aa7; --c-eq: #2a78d6; --c-bond: #1baf7a; --c-cash: #008300; --c-gold: #eda100;
+    --red: #e34948; --shadow: 6px 6px 0 var(--ink);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--paper); color: var(--ink); padding: 36px 40px 48px;
+    font: 15px/1.5 "Helvetica Neue", "PingFang SC", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums; }
+  .blk { background: #fff; border: 3px solid var(--ink); box-shadow: var(--shadow); min-width: 0; }
+
+  /* ── 功能分区：分区色只出现在阴影/区头/分隔线，块底保持白色 ── */
+  .zone { margin-top: 38px; --z: var(--ink); --zt: #fff; }
+  .z-asset  { --z: var(--c-eq);   --zt: #fff; }
+  .z-flow   { --z: var(--c-bond); --zt: #fff; }
+  .z-commit { --z: var(--c-gold); --zt: var(--ink); }
+  .z-risk   { --z: var(--red);    --zt: #fff; }
+  .zone-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .zone-kick { display: inline-block; background: var(--ink); color: var(--paper);
+    font-weight: 900; font-size: 15px; letter-spacing: .15em; padding: 6px 16px;
+    transform: rotate(-1deg); box-shadow: 4px 4px 0 var(--z); }
+  .zone-kick .no { color: var(--z); margin-right: 9px; }
+  .zone-stat { margin-left: auto; font-weight: 900; font-size: 14px; background: #fff;
+    border: 2.5px solid var(--ink); padding: 5px 13px; box-shadow: 4px 4px 0 var(--z); }
+  .zone .blk, .zone .mosaic { box-shadow: 6px 6px 0 var(--z); }
+  .zone .sec-h { border-bottom-color: var(--z); }
+  .blk.lead .sec-h { background: var(--z); color: var(--zt); border-bottom-color: var(--ink); }
+  .blk.lead .sec-h small { color: inherit; opacity: .8; }
+  .zone .main, .zone .main2, .zone .main3, .zone .main2b { margin-top: 24px; }
+  .zone .zone-head + .main, .zone .zone-head + .main2, .zone .zone-head + .main3,
+  .zone .zone-head + .main2b, .zone .zone-head + .mosaic-wrap { margin-top: 0; }
+  .zone .tape { margin-top: 24px; }
+  .mosaic-cap { font-weight: 900; font-size: 13px; letter-spacing: .1em; margin-bottom: 10px; }
+  .zone .mosaic-wrap { margin-bottom: 0; }
+
+  /* ── mosaic 下钻 + hover heatmap ── */
+  .mosaic-wrap { position: relative; margin-bottom: 26px; }
+  .cell { transition: flex-grow .45s cubic-bezier(.16,1,.3,1); }
+  .mosaic-back { font: 900 11px/1.2 "Helvetica Neue","PingFang SC",system-ui,sans-serif;
+    letter-spacing: .06em; padding: 4px 10px; border: 2.5px solid var(--ink); background: #fff;
+    cursor: pointer; margin-left: 12px; box-shadow: 2px 2px 0 var(--ink); }
+  .mosaic-back:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 var(--ink); }
+  .mosaic-path { font-weight: 800; font-size: 12px; margin-left: 8px; opacity: .7; }
+  .hm { position: absolute; inset: 0; z-index: 6; }
+  .hm-float { position: absolute; z-index: 9; width: 280px; height: 190px;
+    background: #fff; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+    pointer-events: none; }
+  .hm-tile { position: absolute; overflow: hidden; border: 1.5px solid var(--ink);
+    padding: 3px 5px; line-height: 1.3; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; }
+  .hm-tile .n { display: block; max-width: 100%; font-weight: 900; font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hm-tile .c { font-weight: 900; font-size: 10px; }
+  .hm-tile.lg .n { font-size: 13.5px; }
+  .hm-tile.lg .c { font-size: 11.5px; }
+
+  /* 净值走势悬停 */
+  .spark-tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--paper);
+    font-weight: 900; font-size: 11.5px; padding: 4px 9px; white-space: nowrap; opacity: 0; z-index: 9; }
+
+  /* ── 头部 ── */
+  .masthead { display: flex; align-items: stretch; gap: 20px; margin-bottom: 26px; }
+  .title-blk { flex: 1; padding: 22px 28px; display: flex; align-items: center;
+    justify-content: space-between; background: var(--ink); color: var(--paper);
+    border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--c-eq); }
+  h1 { font-size: 52px; font-weight: 900; letter-spacing: .02em; line-height: 1; }
+  h1 span { -webkit-text-stroke: 2px var(--paper); color: transparent; }
+  .date-stamp { text-align: right; font-weight: 700; font-size: 14px; line-height: 1.7; }
+  .date-stamp .big { font-size: 26px; font-weight: 900; }
+  .hero-blk { padding: 18px 30px; display: flex; flex-direction: column; justify-content: center; }
+  .hero-blk .lab { font-size: 12px; font-weight: 800; letter-spacing: .25em; }
+  .hero-blk .v { font-size: 62px; font-weight: 900; line-height: 1.05; letter-spacing: -.02em; }
+  .hero-blk .v small { font-size: 24px; }
+  .hero-blk .d { font-weight: 800; font-size: 14px; color: var(--red); }
+
+  /* ── 比例色块条 ── */
+  .mosaic-title { display: inline-block; background: var(--ink); color: var(--paper);
+    font-weight: 900; font-size: 15px; letter-spacing: .15em; padding: 6px 14px;
+    margin-bottom: 14px; transform: rotate(-1deg); }
+  .mosaic { display: flex; height: 190px; border: 3px solid var(--ink);
+    box-shadow: var(--shadow); background: var(--ink); gap: 3px; }
+  .cell { position: relative; overflow: hidden; display: flex; flex-direction: column;
+    justify-content: space-between; padding: 12px 12px 10px; color: #fff; min-width: 0; }
+  .cell .nm { font-weight: 900; font-size: 16px; white-space: nowrap; }
+  .cell .pc { font-weight: 900; font-size: 30px; line-height: 1; }
+  .cell .tg { font-size: 11px; font-weight: 700; opacity: .85; }
+  .cell.slim { padding: 10px 6px; } .cell.slim .nm, .cell.slim .tg { writing-mode: vertical-rl; }
+  .cell.slim .pc { font-size: 15px; writing-mode: vertical-rl; }
+  .cell.light { color: var(--ink); }
+  .sticker { position: absolute; top: 12px; right: 12px; background: var(--paper);
+    color: var(--ink); border: 2.5px solid var(--ink); font-weight: 900; font-size: 13px;
+    padding: 4px 9px; transform: rotate(4deg); box-shadow: 3px 3px 0 rgba(0,0,0,.55); }
+
+  /* ── 主体网格 ── */
+  .main { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 24px; }
+  .main2 { display: grid; grid-template-columns: 1.15fr 1.35fr; gap: 24px; margin-top: 28px; }
+  .main3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 28px; }
+  .main2b { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
+  .sec-h { font-size: 19px; font-weight: 900; letter-spacing: .05em;
+    border-bottom: 4px solid var(--ink); padding: 14px 18px 10px;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    flex-wrap: wrap; }
+  .sec-h small { font-size: 11px; font-weight: 700; letter-spacing: .15em; }
+  .pad { padding: 16px 18px 18px; }
+
+  /* 排行榜 */
+  .rank { list-style: none; }
+  .rank li { display: flex; align-items: center; gap: 12px; padding: 8px 0;
+    border-bottom: 2px solid #e4e0d4; font-weight: 700; font-size: 14.5px; }
+  .rank li:last-child { border-bottom: 0; }
+  .rank .no { flex: none; width: 30px; height: 30px; border: 2.5px solid var(--ink);
+    display: grid; place-items: center; font-weight: 900; font-size: 13px; background: var(--paper); }
+  .rank li:nth-child(1) .no { background: var(--c-gold); }
+  .rank li:nth-child(2) .no, .rank li:nth-child(3) .no { background: #fff; }
+  .rank .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank .us { font-size: 9.5px; background: var(--c-eq); color: #fff; padding: 1px 5px;
+    font-weight: 900; margin-left: 6px; vertical-align: 2px; }
+  .rank .sg { font-size: 9.5px; background: var(--c-gold); color: var(--ink); padding: 1px 5px;
+    font-weight: 900; margin-left: 6px; vertical-align: 2px; }
+  .rank .v { font-weight: 900; }
+  .rank .pl { font-size: 11px; font-weight: 900; white-space: nowrap; }
+  .pl.up { color: var(--c-bond); } .pl.dn { color: var(--red); }
+
+  /* 折线块 */
+  .spark-blk .pad { padding-top: 10px; }
+  #spark { width: 100%; height: auto; display: block; touch-action: pan-y; }
+  .spark-cap { display: flex; justify-content: space-between; font-weight: 800;
+    font-size: 12px; margin-top: 8px; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  .kpi { border: 2.5px solid var(--ink); padding: 10px 12px; background: var(--paper); }
+  .kpi .l { font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+  .kpi .v { font-size: 24px; font-weight: 900; }
+
+  /* 通用行 */
+  .kv { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 7px 0; border-bottom: 2px solid #e4e0d4; font-weight: 700; font-size: 13.5px; }
+  .kv:last-child { border-bottom: 0; }
+  .kv:has(+ .sect), .kv:has(+ .note) { border-bottom: 0; }  /* 虚线分节/虚线框上不再叠行分隔实线 */
+  .kv .v { font-weight: 900; white-space: nowrap; }
+  .kv .sub { font-size: 11px; font-weight: 700; opacity: .6; }
+  .kv .rowl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .kv .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note { margin-top: 12px; padding: 10px 12px; border: 2.5px dashed var(--ink);
+    font-weight: 800; font-size: 12px; line-height: 1.7; }
+  .note b { background: var(--c-gold); padding: 0 5px; }
+
+  /* 粗条形（杠铃/分类） */
+  .fatrow { margin-bottom: 12px; }
+  .fatrow .lab { display: flex; justify-content: space-between; font-weight: 900;
+    font-size: 13.5px; margin-bottom: 4px; }
+  .fatbar { height: 22px; border: 2.5px solid var(--ink); background: var(--paper); }
+  .fatbar i { display: block; height: 100%; border-right: 2.5px solid var(--ink); }
+  .fatbar i.full { border-right: 0; }
+
+  /* 联动走势控件 */
+  .trendbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .trendbar button, .trendbar select { font: 900 11px "Helvetica Neue", system-ui, sans-serif;
+    letter-spacing: .08em; padding: 3px 10px; border: 2.5px solid var(--ink);
+    background: #fff; color: var(--ink); cursor: pointer; }
+  .trendbar button.on { background: var(--ink); color: var(--paper); }
+
+  /* 字母章（订阅图标） */
+  .chip { display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border: 2px solid var(--ink); background: var(--paper);
+    color: var(--ink); font-size: 10px; font-weight: 900; flex: none; overflow: hidden; }
+  .chip img { width: 100%; height: 100%; object-fit: contain; }
+  .chip.s { width: 14px; height: 14px; font-size: 8px; border-width: 1.5px; }
+
+  /* 扣费日历 */
+  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; font-size: 10px; }
+  .cal-h { text-align: center; font-weight: 900; padding: 2px 0; letter-spacing: .1em; }
+  .cal-d { min-height: 48px; border: 2px solid #d9d4c5; padding: 3px 5px; background: #fff; }
+  .cal-d.cal-today { border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+  .cal-out { opacity: .38; }
+  .cal-n { font-weight: 900; font-size: 10.5px; }
+  .cal-ev { font-size: 9.5px; font-weight: 800; margin-top: 2px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 3px; }
+
+  .chart { width: 100%; }
+
+  /* 警示带 */
+  .tape { margin-top: 28px; border: 3px solid var(--ink); box-shadow: var(--shadow);
+    background: repeating-linear-gradient(-45deg, var(--c-gold) 0 22px, var(--ink) 22px 44px); padding: 3px; }
+  .tape-in { background: var(--ink); display: flex; gap: 3px; flex-wrap: wrap; }
+  .tape-item { flex: 1 1 280px; padding: 13px 18px; font-weight: 800; font-size: 13.5px;
+    background: var(--paper); display: flex; gap: 10px; align-items: center; }
+  .badge { flex: none; font-weight: 900; font-size: 11px; color: #fff;
+    background: var(--red); padding: 3px 8px; transform: rotate(-3deg); }
+  .badge.y { background: var(--c-gold); color: var(--ink); }
+  .badge.o { background: #ec835a; }
+
+  footer { margin-top: 22px; font-weight: 800; font-size: 11px; letter-spacing: .2em;
+    display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+  @media (max-width: 980px) {
+    body { padding: 20px 16px 36px; }
+    .masthead { flex-direction: column; }
+    .main, .main2, .main3, .main2b { grid-template-columns: 1fr; }
+    h1 { font-size: 36px; }
+    .hero-blk .v { font-size: 46px; }
+    .mosaic { height: 150px; }
+  }
+
+  .print-btn { font: 900 11px "Helvetica Neue", "PingFang SC", system-ui, sans-serif;
+    letter-spacing: .08em; padding: 4px 12px; border: 2.5px solid var(--ink);
+    background: #fff; color: var(--ink); cursor: pointer; box-shadow: 2px 2px 0 var(--ink);
+    margin-left: 10px; vertical-align: 1px; }
+  .print-btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 var(--ink); }
+  .print-btn.on { background: var(--ink); color: var(--paper); }
+
+  /* 演示脱敏:金额数字替换为 ***;SVG 悬停点禁 hover 防 title 泄露 */
+  body.privacy svg circle { pointer-events: none; }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { padding: 0; }
+    .blk, .mosaic, .tape, .cal-grid, .kpis, .zone-head { break-inside: avoid; }
+    .zone { margin-top: 24px; }
+    .print-btn, .spark-tip, .hm, .hm-float { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="title-blk">
+    <h1>资产<span>全景</span><br>PANORAMA</h1>
+    <div class="date-stamp" id="date-stamp"></div>
+  </div>
+  <div class="hero-blk blk">
+    <div class="lab">TOTAL NET WORTH 总净资产</div>
+    <div class="v" id="hero-v"></div>
+    <div class="d" id="hero-d"></div>
+  </div>
+</div>
+
+<section class="zone z-asset">
+<div class="zone-head"><span class="zone-kick"><span class="no">01</span>资产 ASSETS</span><span class="zone-stat" id="zs-asset"></span></div>
+<div class="mosaic-wrap">
+  <div class="mosaic-cap"><span id="mosaic-cap-t">大类配置 ── 色块面积 = 真实占比 · 悬停看持仓 heatmap · 点击下钻</span><button
+    class="mosaic-back" id="mosaic-back" style="display:none">← 返回</button><span
+    class="mosaic-path" id="mosaic-path"></span></div>
+  <div class="mosaic" id="mosaic"></div>
+</div>
+
+<div class="main">
+  <div class="blk spark-blk">
+    <div class="sec-h">净值走势 <small id="spark-sub">NET WORTH · 万元</small></div>
+    <div class="pad">
+      <div style="position:relative">
+        <svg id="spark" viewBox="0 0 430 170" role="img" aria-label="净资产粗线走势"></svg>
+        <div class="spark-tip" id="spark-tip"></div>
+      </div>
+      <div class="spark-cap" id="spark-cap"></div>
+      <div class="kpis">
+        <div class="kpi"><div class="l">金融资产</div><div class="v" id="kpi-fin"></div></div>
+        <div class="kpi"><div class="l">月储蓄率</div><div class="v" id="kpi-sr"></div></div>
+        <div class="kpi"><div class="l">杠杆 LTV</div><div class="v" id="kpi-ltv"></div></div>
+        <div class="kpi"><div class="l">安全垫</div><div class="v" id="kpi-run"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="blk">
+    <div class="sec-h">持仓排行 <small>TOP 8 · 万元 · 浮盈</small></div>
+    <div class="pad">
+      <ol class="rank" id="rank"></ol>
+    </div>
+  </div>
+
+  <div class="blk">
+    <div class="sec-h">权益去哪了 <small>EQUITY MIX</small></div>
+    <div class="pad" id="mix"></div>
+  </div>
+</div>
+
+<div class="main2">
+  <div class="blk lead">
+    <div class="sec-h">持仓地图 <small>点击下钻 · 中心返回 · 联动右图</small></div>
+    <div class="pad">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <div id="c_tree" class="chart" style="height:390px;flex:1;min-width:280px;position:relative"></div>
+        <div id="c_tree_legend" style="width:130px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">选中资产走势
+      <span class="trendbar"><select id="c_trend_acct"></select>
+        <button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all" class="on">全部</button></span>
+    </div>
+    <div class="pad">
+      <div style="font-weight:800;font-size:12px;margin-bottom:8px" id="c_trend_hint">点击持仓地图查看走势</div>
+      <div id="c_trend" class="chart" style="height:250px"></div>
+      <div style="margin-top:14px" id="barbell"></div>
+    </div>
+  </div>
+</div>
+
+<div class="main3">
+  <div class="blk">
+    <div class="sec-h">真实收益 <small>资金加权 · 净投入口径</small></div>
+    <div class="pad" id="perf"></div>
+  </div>
+  <div class="blk lead">
+    <div class="sec-h">财务自由进度 <small id="fi-sub">FI 线 = 年固定支出 ÷ 提取率</small></div>
+    <div class="pad" id="fi"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">再平衡执行单 <small>5/25 规则 · 增量优先</small></div>
+    <div class="pad" id="rebalance"></div>
+  </div>
+</div>
+
+</section>
+
+<section class="zone z-flow">
+<div class="zone-head"><span class="zone-kick"><span class="no">02</span>现金流 CASHFLOW</span><span class="zone-stat" id="zs-flow"></span></div>
+<div class="main2b">
+  <div class="blk lead">
+    <div class="sec-h">现金流月账 <small>收入 − 固定支出</small></div>
+    <div class="pad" id="cashflow"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">月度走势 <small>净结余 · 储蓄率 · 空心=草稿</small></div>
+    <div class="pad"><div id="c_cf_trend" class="chart" style="height:220px"></div>
+      <div class="note" id="cf-note" style="display:none"></div></div>
+  </div>
+</div>
+</section>
+
+<section class="zone z-commit">
+<div class="zone-head"><span class="zone-kick"><span class="no">03</span>账单与承诺 COMMITMENTS</span><span class="zone-stat" id="zs-commit"></span></div>
+<div class="main3">
+  <div class="blk">
+    <div class="sec-h">订阅 <small id="h-subs"></small></div>
+    <div class="pad" id="subs"></div>
+  </div>
+  <div class="blk lead">
+    <div class="sec-h">扣费日历 <small id="h-cal"></small></div>
+    <div class="pad" id="calendar"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">保险保障 <small>按成员 · 年缴</small></div>
+    <div class="pad" id="insurance"></div>
+  </div>
+</div>
+</section>
+
+<section class="zone z-risk">
+<div class="zone-head"><span class="zone-kick"><span class="no">04</span>风险与体质 RISK</span><span class="zone-stat" id="zs-risk"></span></div>
+<div class="main3">
+  <div class="blk lead">
+    <div class="sec-h">财务体质 <small>杠杆与流动性</small></div>
+    <div class="pad" id="fitness"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">负债台账 <small>余额 · 利息月耗</small></div>
+    <div class="pad" id="lever"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">平台分布 <small>金融资产在哪 · 应急可查</small></div>
+    <div class="pad" id="platforms"></div>
+  </div>
+</div>
+
+<div class="main3">
+  <div class="blk lead">
+    <div class="sec-h">压力测试 <small>标准情景 · 杠杆放大效应</small></div>
+    <div class="pad" id="stress"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">保险缺口 <small>需求分析 vs 现有保额</small></div>
+    <div class="pad" id="insgap"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">流动性瀑布 <small>应急动用顺序</small></div>
+    <div class="pad" id="waterfall"></div>
+  </div>
+</div>
+
+<div class="blk" style="margin-top:24px">
+  <div class="sec-h">历史回放 <small id="sbbi-sub">SBBI 2005–2025 · 当前金融配置穿越 21 年</small></div>
+  <div class="pad" id="sbbi"></div>
+</div>
+
+<div class="tape">
+  <div class="tape-in" id="tape-in"></div>
+</div>
+</section>
+
+<footer>
+  <span>ASSET PANORAMA POSTER EDITION · 仅供个人参考<button class="print-btn" id="print-btn">🖨 打印 / 存 PDF</button><button class="print-btn" id="privacy-btn">👓 演示脱敏</button></span>
+  <span id="foot-r"></span>
+</footer>
+
+<script>
+const PD = /*__PD__*/{}/*__PD_END__*/;
+const D = PD;
+/* 模块隔离:任一模块渲染出错只黑自己,不连累后面的模块 */
+const safe = (name, fn) => { try { fn(); } catch (e) { console.error('[poster]', name, e); } };
+const HAS_EC = typeof echarts !== 'undefined';
+const ecFallback = id => { const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="note">图表库未加载(离线且未内联)· 数据不受影响</div>'; };
+const T = {
+  ink:'#111111', paper:'#f4f1ea', red:'#e34948', gold:'#eda100',
+  eq:'#2a78d6', bond:'#1baf7a',
+  palette:['#4a3aa7','#2a78d6','#1baf7a','#008300','#eda100','#8a5aa7','#5b7d8c'],
+  sans:'Helvetica Neue'
+};
+const CCOL = {'房产':'#4a3aa7','权益':'#2a78d6','债券类固收':'#1baf7a','现金':'#008300','黄金':'#eda100'};
+const wan = v => window._privacy ? '¥***' : '¥' + (v/1e4).toFixed(1) + '万';   // 演示脱敏时所有动态金额走这里被遮蔽
+const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const chip = (it, small) => it && it.iconPath
+  ? `<span class="chip${small?' s':''}"><img src="${esc(it.iconPath)}" alt=""></span>`
+  : `<span class="chip${small?' s':''}">${esc(String(it&&it.名称||'·').charAt(0))}</span>`;
+const usNames = new Set();
+(D.tree||[]).forEach(c=>(c.children||[]).forEach(s=>{
+  if (s.name==='美股') (s.children||[]).forEach(x=>usNames.add(x.name));
+}));
+const lighten = (hex,a)=>{const n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255,
+  f=v=>Math.round(v+(255-v)*a);return `rgb(${f(r)},${f(g)},${f(b)})`;};
+
+/* 日期戳 */
+safe('日期戳', function(){
+  const parts=(PD.date||'').split(' ');
+  const dPart=parts[0]||'', tPart=parts[1]||'';
+  const dt = dPart ? new Date(dPart+'T'+(tPart||'00:00')+':00') : new Date();
+  const start = new Date(dt.getFullYear(),0,0);
+  const doy = Math.floor((dt-start)/86400000);
+  const WD=['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const mmdd = dPart ? dPart.slice(5).replace('-','/') : '';
+  document.getElementById('date-stamp').innerHTML =
+    'NO.'+dt.getFullYear()+'-'+String(doy).padStart(3,'0')+'<br><span class="big">'+mmdd+'</span><br>'+WD[dt.getDay()]+' · '+tPart;
+});
+
+/* HERO 总净资产 + 日变动 */
+safe('HERO', function(){
+  const w = (PD.networth||0)/1e4;
+  const s = w.toFixed(1);
+  const dot = s.indexOf('.');
+  document.getElementById('hero-v').innerHTML = s.slice(0,dot)+'<small>'+s.slice(dot)+'万</small>';
+  const hist=(PD.history||[]).map(r=>r['总净资产']);
+  const n=hist.length;
+  const diff = n>=2 ? hist[n-1]-hist[n-2] : 0;
+  const prev = n>=2 ? hist[n-2] : (hist[n-1]||1);
+  const pct = prev ? diff/prev*100 : 0;
+  const arrow = diff>=0 ? '▲' : '▼';
+  const diffWan = Math.abs(diff)/1e4;
+  const pnlWan = (PD.pnlTotal||0)/1e4;
+  const heroD = document.getElementById('hero-d');
+  heroD.style.color = diff>=0 ? 'var(--c-bond)' : 'var(--red)';
+  heroD.textContent =
+    arrow+' 较上期 '+(diff>=0?'+':'−')+diffWan.toFixed(1)+'万 / '+(pct>=0?'+':'−')+Math.abs(pct).toFixed(2)+'%'
+    +' · 累计浮盈 '+(pnlWan>=0?'+':'−')+Math.abs(pnlWan).toFixed(1)+'万';
+});
+
+/* 分区重点数字 */
+safe('分区重点数字', function(){
+  const set=(id,txt)=>{const e=document.getElementById(id);if(e)e.textContent=txt;};
+  const h=(PD.history||[]);
+  let chg='';
+  if(h.length>=2){
+    const a=h[h.length-2]['总净资产'], b=h[h.length-1]['总净资产'];
+    const p=a?(b-a)/a*100:0;
+    chg=' · 较上期 '+(p>=0?'+':'−')+Math.abs(p).toFixed(2)+'%';
+  }
+  set('zs-asset','净资产 '+((PD.networth||0)/1e4).toFixed(1)+'万'+chg);
+  set('zs-flow','本月净结余 '+((PD.netCashflow||0)>=0?'+':'−')+'¥'+Math.abs(PD.netCashflow||0).toLocaleString()
+    +' · 储蓄率 '+((PD.savingsRate||0)*100).toFixed(0)+'%');
+  set('zs-commit','月固定支出 ¥'+(PD.fixedOut||0).toLocaleString()+' · 其中订阅 ¥'+(PD.subsMonthly||0).toLocaleString());
+  set('zs-risk','告警 '+(PD.alerts||[]).length+' 条 · 整体杠杆 '+((PD.leverage||0)*100).toFixed(1)+'%');
+});
+
+/* 大类配置色块:hover = 持仓 heatmap(本类色细微深浅 + 涨跌文字色) · click = 下钻构成(动画) */
+safe('大类配置色块', function(){
+  const CATS=[
+    {k:'房产', label:'房产 <span style="opacity:.7">PROPERTY</span>', slim:false, light:false},
+    {k:'权益', label:'权益 EQUITY', slim:false, light:false},
+    {k:'债券类固收', label:'固收', slim:false, light:false},
+    {k:'现金', label:'现金', slim:true, light:false},
+    {k:'黄金', label:'黄金', slim:true, light:true},
+  ];
+  const nw = PD.networth || 1;
+  const classes = PD.classes || {};
+  const target = PD.target || {};
+  const treeByName = {};
+  (PD.tree||[]).forEach(c=>{ treeByName[c.name]=c; });
+  const mosaic = document.getElementById('mosaic');
+  const wrap = mosaic.closest('.mosaic-wrap');
+  const backBtn = document.getElementById('mosaic-back');
+  const pathEl = document.getElementById('mosaic-path');
+  if (matchMedia('(hover: none)').matches) {   // 触屏没有悬停,说明文案不再提 heatmap
+    const t = document.getElementById('mosaic-cap-t');
+    if (t) t.textContent = '大类配置 ── 色块面积 = 真实占比 · 点击下钻';
+  }
+
+  const val = nd => nd.value!=null ? nd.value : (nd.children||[]).reduce((s,c)=>s+val(c),0);
+  const leaves = nd => (nd.children && nd.children.length)
+    ? nd.children.flatMap(leaves)
+    : [{name:nd.name, v:val(nd)}];
+  const seriesOf = name => {     // 行情序列:持仓K线 → 账户历史 → 账户名前缀
+    const t = PD.trends||{};
+    return t['hold:'+name] || t['acct:'+name] || t['acct:'+String(name).split('·')[0]] || null;
+  };
+  const TODAY = (PD.date||'').slice(0,10);
+  const chg = name => {          // 当天涨跌:尾点必须是数据当天,否则不显示(如美股未出当日K线)
+    const s = seriesOf(name);
+    if(!s || s.length<2 || s[s.length-1][0] !== TODAY) return null;
+    const a = s[s.length-2][1], b = s[s.length-1][1];
+    return a ? (b/a-1) : null;
+  };
+  const chgNode = nd => {        // 子类/大类:仅聚合有当天数据的叶子,按市值加总后算涨跌
+    if(!nd.children || !nd.children.length) return chg(nd.name);
+    let prev=0, last=0, any=false;
+    leaves(nd).forEach(l=>{
+      const s = seriesOf(l.name);
+      if(s && s.length>=2 && s[s.length-1][0] === TODAY){
+        prev += s[s.length-2][1]; last += s[s.length-1][1]; any = true;
+      }
+    });
+    return (any && prev) ? (last/prev-1) : null;
+  };
+  const fmtChg = p => (p>=0?'+':'−')+Math.abs(p*100).toFixed(2)+'%';
+
+  /* squarified treemap:items [{name,v}] 降序 → 矩形 [{x,y,w,h,it}] */
+  function squarify(items, x, y, w, h){
+    const out=[];
+    let rest = items.filter(i=>i.v>0);
+    const total = rest.reduce((s,i)=>s+i.v,0)||1;
+    rest = rest.map(i=>({it:i, a:i.v/total*w*h}));
+    let cx=x, cy=y, cw=w, ch=h;
+    while(rest.length){
+      const horiz = cw < ch;              // 沿短边铺一行,行内块尽量接近方形
+      const side = horiz ? cw : ch;
+      let row=[], rowA=0, best=Infinity;
+      for(const cand of rest){
+        const ca = rowA+cand.a, thick = ca/side;
+        let worst = 0;
+        row.concat(cand).forEach(t=>{ const len=t.a/thick;
+          worst=Math.max(worst, Math.max(len/thick, thick/len)); });
+        if(worst<=best){ row.push(cand); rowA=ca; best=worst; } else break;
+      }
+      rest = rest.slice(row.length);
+      const thick = rowA/side; let off=0;
+      row.forEach(t=>{
+        const len = t.a/thick;
+        out.push(horiz ? {x:cx+off,y:cy,w:len,h:thick,it:t.it}
+                       : {x:cx,y:cy+off,w:thick,h:len,it:t.it});
+        off += len;
+      });
+      if(horiz){ cy+=thick; ch-=thick; } else { cx+=thick; cw-=thick; }
+    }
+    return out;
+  }
+
+  /* hover heatmap:只下探一层(直接子项),瓦片配色与下钻后的色块完全一致(FLIP 无缝衔接) */
+  let heatEl = null;
+  const hideHeat = ()=>{ if(heatEl){ heatEl.remove(); heatEl=null; } };
+  function showHeat(cellEl, it){
+    hideHeat();
+    const kids = childItems(it);
+    if(!kids.length) return;
+    let host, W, H;
+    if(cellEl.clientWidth >= 110){
+      host = document.createElement('div'); host.className='hm';
+      cellEl.appendChild(host);
+      W = cellEl.clientWidth; H = cellEl.clientHeight;
+    } else {                               // 窄块(现金/黄金)→ mosaic 下方浮动面板,pointer-events:none 防闪烁
+      host = document.createElement('div'); host.className='hm-float';
+      wrap.appendChild(host);
+      const cr = cellEl.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      host.style.left = Math.max(0, Math.min(cr.left-wr.left+cr.width/2-140, wr.width-286))+'px';
+      host.style.top = (mosaic.offsetTop + mosaic.offsetHeight + 10)+'px';
+      W = 274; H = 184;
+    }
+    const totalV = kids.reduce((s,k)=>s+k.value,0)||1;
+    host.innerHTML = squarify(kids.map(k=>({name:k.name, v:k.value, k})), 0, 0, W, H).map(r=>{
+      const k = r.it.k;
+      const light = k.amt >= 0.3;
+      const p0 = chgNode(k.node);
+      const p = (p0==null || p0===0) ? null : p0;   // 无当天数据/周末冻结为0 → 不显示涨跌
+      const pctHtml = p==null ? '' :
+        ` <b style="color:${p>=0?(light?'#0d7a52':'#8ff0c8'):(light?'#c22f2f':'#ffb3b1')}">${fmtChg(p)}</b>`;
+      const small = r.w<54 || r.h<30;
+      const lg = r.w>=104 && r.h>=54;
+      const share = (k.value/totalV*100).toFixed(1);
+      const tip = `${k.name} · ${wan(k.value)} · ${share}%${p!=null?' · '+fmtChg(p):''}`;
+      return `<div class="hm-tile${lg?' lg':''}" data-name="${esc(k.name)}" title="${esc(tip)}" style="left:${r.x.toFixed(1)}px;top:${r.y.toFixed(1)}px;`
+        + `width:${r.w.toFixed(1)}px;height:${r.h.toFixed(1)}px;background:${lighten(k.classHex,k.amt)};`
+        + `color:${light?'#111':'#fff'}">${small?'':`<span class="n">${esc(k.name)}</span><span class="c" style="opacity:.85">${share}%${pctHtml}</span>`}</div>`;
+    }).join('');
+    heatEl = host;
+  }
+
+  /* 下钻状态与渲染 */
+  let path = [];   // 已下钻的节点栈
+  function rootItems(){
+    return CATS.filter(c=>classes[c.k]!=null).map(c=>({
+      name:c.k, cfg:c, value:classes[c.k],
+      node: treeByName[c.k] || {name:c.k, value:classes[c.k]},
+      classHex: CCOL[c.k] || '#555555', amt:0
+    }));
+  }
+  function childItems(parent){
+    return (parent.node.children||[])
+      .map(ch=>({name:ch.name, value:val(ch), node:ch, classHex:parent.classHex}))
+      .sort((a,b)=>b.value-a.value)
+      .map((x,i)=>Object.assign(x, {amt:Math.min(0.15+i*0.09, 0.6)}));
+  }
+  function render(items, level, morphFrom){
+    hideHeat();
+    mosaic.innerHTML = '';
+    const total = items.reduce((s,x)=>s+x.value,0)||1;
+    const cellEls = [];
+    items.forEach(it=>{
+      const share = it.value/total*100;
+      const light = level===0 ? it.cfg.light : it.amt>=0.3;
+      const slim = level===0 ? it.cfg.slim : share<8;
+      const el = document.createElement('div');
+      el.className = 'cell'+(slim?' slim':'')+(light?' light':'');
+      el.style.background = it.amt ? lighten(it.classHex, it.amt) : it.classHex;
+      let inner;
+      if(level===0){
+        const cur = it.value/nw*100, tgt = (target[it.name]||0)*100, diff = cur-tgt;
+        if(slim) inner = `<span class="nm">${it.cfg.label}</span><span class="pc">${cur.toFixed(1)}%</span>`;
+        else{
+          let tgTxt = `目标 ${tgt.toFixed(0)}%`, sticker = '';
+          if(it.name==='房产'){
+            tgTxt += cur>50 ? ' · 上限 50% ⚠' : ' · 上限 50%';
+            if(cur>50) sticker = `<span class="sticker">超限 +${diff.toFixed(1)}%!</span>`;
+          } else if(it.name==='权益')
+            tgTxt += ' · 差 '+(diff>=0?'+':'−')+Math.abs(diff).toFixed(1)+'%';
+          inner = `<span class="nm">${it.cfg.label}</span>${sticker}<div><span class="pc">${cur.toFixed(1)}%</span><div class="tg">${tgTxt}</div></div>`;
+        }
+      } else {
+        inner = slim
+          ? `<span class="nm">${esc(it.name)}</span><span class="pc">${share.toFixed(1)}%</span>`
+          : `<span class="nm">${esc(it.name)}</span><div><span class="pc">${share.toFixed(1)}%</span><div class="tg">${wan(it.value)}</div></div>`;
+      }
+      el.innerHTML = inner;
+      const p0 = chgNode(it.node);
+      // 与 heatmap 同口径:0(周末冻结)当作无当天数据,不显示涨跌
+      el.title = `${it.name} · ${wan(it.value)} · ${share.toFixed(1)}%`+((p0!=null&&p0!==0)?' · '+fmtChg(p0):'');
+      if(it.node.children && it.node.children.length){
+        el.style.cursor = 'pointer';
+        el.addEventListener('mouseenter', ()=>showHeat(el, it));
+        el.addEventListener('mouseleave', hideHeat);
+        el.addEventListener('click', ()=>{
+          // 点击瞬间捕获当前 heatmap 瓦片矩形,供 FLIP 变形用
+          const tiles = heatEl ? Array.from(heatEl.querySelectorAll('.hm-tile')).map(t=>({
+            name: t.dataset.name, rect: t.getBoundingClientRect() })) : null;
+          path.push(it);
+          update(tiles);
+        });
+      }
+      mosaic.appendChild(el);
+      cellEls.push(el);
+    });
+    const shares = items.map(x=>Math.max(x.value/total*100, 0.4));
+    if(morphFrom && morphFrom.length){
+      /* FLIP:hover 瓦片矩形 → 新色块矩形,克隆层飞行过渡 */
+      cellEls.forEach((c,i)=>{ c.style.transition = 'none';   // 直接落到终值,避免 flex 过渡污染 FLIP 终点测量
+        c.style.flex = `${shares[i]} 1 0%`; c.style.visibility = 'hidden'; });
+      requestAnimationFrame(()=>{
+        const wr = wrap.getBoundingClientRect();
+        const layer = document.createElement('div');
+        layer.style.cssText = 'position:absolute;inset:0;z-index:8;pointer-events:none';
+        wrap.appendChild(layer);
+        items.forEach((it,idx)=>{
+          const to = cellEls[idx].getBoundingClientRect();
+          const src = morphFrom.find(t=>t.name===it.name);
+          const f = src ? src.rect : to;
+          const d = document.createElement('div');
+          d.style.cssText = 'position:absolute;box-sizing:border-box;border:1.5px solid #111;overflow:hidden;'
+            + `left:${f.left-wr.left}px;top:${f.top-wr.top}px;width:${f.width}px;height:${f.height}px;`
+            + `background:${it.amt ? lighten(it.classHex,it.amt) : it.classHex};`
+            + 'transition:all .45s cubic-bezier(.16,1,.3,1)';
+          layer.appendChild(d);
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            d.style.left = (to.left-wr.left)+'px';
+            d.style.top = (to.top-wr.top)+'px';
+            d.style.width = to.width+'px';
+            d.style.height = to.height+'px';
+          }));
+        });
+        setTimeout(()=>{ layer.remove(); cellEls.forEach(c=>{ c.style.visibility=''; }); }, 500);
+      });
+    } else {
+      /* 无瓦片来源(初始/返回):flex-grow 展开动画 */
+      cellEls.forEach((c,i)=>{
+        c.style.flex = '0.0001 1 0%';
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          c.style.flex = `${shares[i]} 1 0%`;
+        }));
+      });
+    }
+  }
+  function update(morphFrom){
+    const level = path.length;
+    backBtn.style.display = level ? '' : 'none';
+    pathEl.textContent = level ? '全部 › '+path.map(p=>p.name).join(' › ') : '';
+    render(level ? childItems(path[level-1]) : rootItems(), level, morphFrom);
+  }
+  backBtn.addEventListener('click', ()=>{ if(path.length){ path.pop(); update(); } });
+  update();
+});
+
+/* 净值粗线走势 */
+safe('净值走势', function(){
+  const H=(PD.history||[]).map(r=>r['总净资产']/1e4);
+  const DATE=(PD.history||[]).map(r=>r.date||'');
+  const n=H.length;
+  const svg=document.getElementById('spark');
+  if(!n){ svg.innerHTML=''; document.getElementById('spark-cap').innerHTML=''; return; }
+  document.getElementById('spark-sub').textContent = 'NET WORTH · '+n+'D · 万元';
+  const W=430,HT=170,P={t:14,r:10,b:10,l:10};
+  const minV=Math.min(...H), maxV=Math.max(...H);
+  const pad=(maxV-minV)*0.15 || Math.abs(maxV)*0.02 || 1;
+  const lo=minV-pad, hi=maxV+pad;
+  const x=i=>P.l+(W-P.l-P.r)*i/Math.max(1,n-1);
+  const y=v=>P.t+(HT-P.t-P.b)*(1-(v-lo)/(hi-lo));
+  const pts=H.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
+  let g=`<polyline points="${pts}" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const pk=H.indexOf(Math.max(...H));
+  const fmtDate = d => (d||'').slice(5).replace('-','/');
+  g+=`<circle cx="${x(pk)}" cy="${y(H[pk])}" r="7" fill="var(--c-gold)" stroke="#111" stroke-width="3"><title>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</title></circle>`;
+  g+=`<circle cx="${x(n-1)}" cy="${y(H[n-1])}" r="7" fill="var(--red)" stroke="#111" stroke-width="3"><title>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</title></circle>`;
+  g+=`<line id="sp-xh" y1="${P.t}" y2="${HT-P.b}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
+  g+=`<circle id="sp-hd" r="7" fill="var(--c-bond)" stroke="#111" stroke-width="3" opacity="0" pointer-events="none"/>`;
+  svg.innerHTML=g;
+  const xh=svg.querySelector('#sp-xh'), hd=svg.querySelector('#sp-hd');
+  const tip=document.getElementById('spark-tip');
+  const onPt=e=>{                        // pointer 事件:鼠标悬停 + 触屏点按/滑动都走这里
+    const r=svg.getBoundingClientRect(), mx=(e.clientX-r.left)*W/r.width;
+    let i=Math.round((mx-P.l)/((W-P.l-P.r)/Math.max(1,n-1)));
+    i=Math.max(0,Math.min(n-1,i));
+    xh.setAttribute('x1',x(i)); xh.setAttribute('x2',x(i)); xh.setAttribute('opacity',1);
+    hd.setAttribute('cx',x(i)); hd.setAttribute('cy',y(H[i])); hd.setAttribute('opacity',1);
+    tip.style.opacity=1;
+    tip.style.left=Math.min(x(i)*r.width/W+12, r.width-118)+'px';
+    tip.style.top=Math.max(0, y(H[i])*r.height/HT-40)+'px';
+    tip.textContent=fmtDate(DATE[i])+' · '+(window._privacy?'***':H[i].toFixed(1)+'万');
+  };
+  svg.addEventListener('pointermove',onPt);
+  svg.addEventListener('pointerdown',onPt);
+  svg.addEventListener('pointerleave',()=>{ tip.style.opacity=0; xh.setAttribute('opacity',0); hd.setAttribute('opacity',0); });
+  document.getElementById('spark-cap').innerHTML =
+    `<span>${fmtDate(DATE[0])} · ${H[0].toFixed(1)}万</span><span>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</span><span>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</span>`;
+});
+
+/* KPI 四格 */
+safe('KPI四格', function(){
+document.getElementById('kpi-fin').textContent = ((PD.financial||0)/1e4).toFixed(1)+'万';
+document.getElementById('kpi-sr').textContent = ((PD.savingsRate||0)*100).toFixed(1)+'%';
+document.getElementById('kpi-ltv').textContent = ((PD.ltv||0)*100).toFixed(1)+'%';
+document.getElementById('kpi-run').textContent = Math.round(PD.runway||0)+'个月';
+});
+
+/* 持仓排行 TOP8（含浮盈,点击联动走势） */
+safe('持仓排行', function(){
+document.getElementById('rank').innerHTML = (PD.positions||[]).slice(0,8).map((p,i)=>{
+  const [name,val,single,pnl,pct] = p;
+  let tag = '';
+  if (usNames.has(name)) tag = '<span class="us">US</span>';
+  else if (single) tag = '<span class="sg">个股</span>';
+  let pl = '';
+  if (pnl != null)
+    pl = `<span class="pl ${pnl>=0?'up':'dn'}">${pnl>=0?'+':'−'}${Math.abs(pnl/1e4).toFixed(1)}万 ${pnl>=0?'+':'−'}${Math.abs(pct*100).toFixed(0)}%</span>`;
+  return `<li><span class="no">${i+1}</span><span class="nm">${esc(name)}${tag}</span>
+   ${pl}<span class="v">${(val/1e4).toFixed(1)}</span></li>`;
+}).join('');
+document.querySelectorAll('#rank li').forEach((li,i)=>{
+  const pos = (PD.positions||[])[i], name = pos && pos[0];
+  if (name && (PD.trends||{})['hold:'+name]) {
+    li.style.cursor = 'pointer'; li.title = '点击查看走势';
+    li.addEventListener('click', ()=>window._showTrend && window._showTrend('hold:'+name, name));
+  }
+});
+});
+
+/* 权益地域 + 币种/流动性虚线框 */
+safe('权益地域', function(){
+  const eq = PD.regionEq || {};
+  const cn = eq['中国大陆']||0, us = eq['美国']||0, hk = eq['香港']||0;
+  const eu = (eq['欧洲']||0) + (eq['日本']||0);
+  const tot = cn+us+hk+eu || 1;
+  const MIX=[['中国大陆',cn],['美国',us],['香港',hk],['欧+日',eu]].map(([n,v])=>[n, v/tot*100]);
+  let out = MIX.map(([n,v])=>
+   `<div class="fatrow">
+     <div class="lab"><span>${n}</span><span>${v.toFixed(1)}%</span></div>
+     <div class="fatbar"><i style="width:${v}%;background:var(--c-eq)" class="${v>=99?'full':''}" title="${n} ${v.toFixed(1)}%"></i></div>
+   </div>`).join('');
+  const ccy = PD.ccy || {};
+  const finTotal = PD.financial || Object.values(ccy).reduce((a,b)=>a+b,0) || 1;
+  const usdPct = (ccy['USD']||0)/finTotal*100;
+  const hkdPct = (ccy['HKD']||0)/finTotal*100;
+  const cnyPct = (ccy['CNY']||0)/finTotal*100;
+  const goldPct = (ccy['黄金']||0)/finTotal*100;
+  const liquid = (PD.liquid||0)/1e4;
+  const lq = PD.liq||{};
+  const illiquid = ((lq['极低']||0)+(lq['锁定']||0))/1e4;
+  out += `<div class="note" style="margin-top:16px">
+    美元资产 <span style="font-size:17px;font-weight:900">${usdPct.toFixed(1)}%</span> · 港币 ${hkdPct.toFixed(1)}%<br>人民币 ${cnyPct.toFixed(1)}% · 黄金 ${goldPct.toFixed(1)}%<br>
+    <b>流动性: 可变现 ${liquid.toFixed(0)}万 / 锁定+极低 ${illiquid.toFixed(0)}万</b></div>`;
+  document.getElementById('mix').innerHTML = out;
+});
+
+/* 杠铃粗条 */
+safe('杠铃', function(){
+  const bb = D.barbell || {};
+  const seg = [['安全腿',bb['安全腿']||0,'var(--c-bond)'],['核心',bb['核心']||0,'var(--c-eq)'],
+    ['冒险腿',bb['冒险腿']||0,'var(--red)'],['中间',bb['中间']||0,'var(--c-gold)']];
+  const tot = seg.reduce((s,x)=>s+x[1],0)||1;
+  const mx = Math.max(...seg.map(x=>x[1]))||1;
+  document.getElementById('barbell').innerHTML =
+    '<div style="font-weight:900;font-size:14px;letter-spacing:.08em;margin-bottom:10px">杠铃视图 ── 安全腿覆盖缺口 '
+    + (D.safetyMonths||0) + ' 个月</div>'
+    + seg.map(([n,v,c])=>
+    `<div class="fatrow">
+      <div class="lab"><span>${n}</span><span>${(v/1e4).toFixed(0)}万 · ${(v/tot*100).toFixed(0)}%</span></div>
+      <div class="fatbar"><i style="width:${(v/mx*100).toFixed(1)}%;background:${c}" class="${v>=mx?'full':''}"></i></div>
+    </div>`).join('');
+});
+
+/* 真实收益(资金加权) + 增长归因 */
+safe('真实收益', function(){
+  const el = document.getElementById('perf');
+  const P = D.perf || {}, t = P.total;
+  if (!t){ el.innerHTML = '<div class="note">暂无台账收益数据 · 在「持仓管理」记账后显示</div>'; return; }
+  const sPct = v => (v>=0?'+':'−')+Math.abs(v*100).toFixed(1)+'%';
+  const col = v => v>=0 ? 'var(--c-bond)' : 'var(--red)';
+  let html = `<div class="kv"><span>组合累计 <span class="sub">浮盈/净投入</span></span>
+    <span class="v" style="color:${col(t.cum)};font-size:17px">${sPct(t.cum)}</span></div>`;
+  html += `<div class="kv"><span>净投入 → 现值</span><span class="v">${wan(t.invested)} → ${wan(t.invested+t.pnl)}</span></div>`;
+  // 期初按券商摊薄成本记在基线日,时间被压缩 → 年化満90天才有意义
+  const xirrOk = t.days>=90 && t.xirr!=null && Math.abs(t.xirr)<2;
+  html += `<div class="kv"><span>年化 XIRR <span class="sub">${t.days}天</span></span><span class="v">${
+    xirrOk ? sPct(t.xirr) : '<span class="sub">满90天显示(期初=历史成本)</span>'}</span></div>`;
+  Object.entries(P.byClass||{}).forEach(([c,s])=>{
+    html += `<div class="kv"><span>${esc(c)} <span class="sub">投入${(s.invested/1e4).toFixed(0)}万</span></span>
+      <span class="v" style="color:${col(s.cum)}">${sPct(s.cum)}</span></div>`;
+  });
+  const a = D.attribution;
+  if (a){
+    const w = v=>(v>=0?'+':'−')+Math.abs(v/1e4).toFixed(1)+'万';
+    html += `<div class="note">${a.from.slice(5).replace('-','/')}→${a.to.slice(5).replace('-','/')} 净资产 <b>${w(a.deltaNW)}</b><br>
+      = 储蓄 ${w(a.savings)} + 投资 ${w(a.invest)} + 房产净值 ${w(a.property)}${a.draft?' <span class="sub">(含当月草稿)</span>':''}</div>`;
+  }
+  el.innerHTML = html;
+});
+
+/* 财务自由进度 */
+safe('财务自由进度', function(){
+  const el = document.getElementById('fi');
+  const f = D.fi;
+  if (!f){ el.innerHTML = '<div class="note">暂无数据 · 需固定支出与金融资产</div>'; return; }
+  const sub = document.getElementById('fi-sub');
+  if (sub) sub.textContent = 'FI 线 = 年固定支出 ÷ '+(f.swr*100).toFixed(1)+'%';
+  const p = Math.min(1, f.progress);
+  let html = `<div class="fatrow">
+    <div class="lab"><span>金融资产 ${wan(D.financial)} / FI 线 ${wan(f.number)}</span><span style="font-size:17px">${(f.progress*100).toFixed(1)}%</span></div>
+    <div class="fatbar" style="height:26px"><i style="width:${(p*100).toFixed(1)}%;background:var(--c-eq)" class="${p>=1?'full':''}"></i></div>
+  </div>`;
+  html += `<div class="kv"><span>年固定支出</span><span class="v">${wan(f.annualOut)}</span></div>`;
+  html += `<div class="kv"><span>月储蓄(当前净结余)</span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
+  const NAMES = {0.02:'保守', 0.04:'基准', 0.06:'乐观'};
+  (f.scenarios||[]).forEach(s=>{
+    html += `<div class="kv"><span>${NAMES[s.r]||''} 实际回报 ${(s.r*100).toFixed(0)}%</span>
+      <span class="v">${s.years==null?'—':(s.years<=0?'已达标 ✓':'约 '+s.years.toFixed(1)+' 年')}</span></div>`;
+  });
+  html += `<div class="note">实际回报 = 已扣通胀口径 · 按当前支出与储蓄外推,是导航不是承诺</div>`;
+  el.innerHTML = html;
+});
+
+/* 再平衡执行单 */
+safe('再平衡执行单', function(){
+  const el = document.getElementById('rebalance');
+  const R = D.rebalance;
+  if (!R){ el.innerHTML = '<div class="note">暂无数据</div>'; return; }
+  const pp = v=>(v>=0?'+':'−')+Math.abs(v*100).toFixed(1);
+  let html = '';
+  (R.rows||[]).forEach(r=>{
+    const badge = r.act ? `<span class="badge ${r.adjustable?'y':''}" style="transform:none">${r.adjustable?'行动':'超限'}</span>` : '';
+    const tagTxt = r.adjustable ? '' : (r.cls==='现金' ? ' <span class="sub">弹药池</span>' : ' <span class="sub">不可调</span>');
+    html += `<div class="kv"><span class="rowl"><span class="txt">${esc(r.cls)}${tagTxt}</span>${badge}</span>
+      <span class="v" style="${r.act?'color:var(--red)':''}">${(r.curPct*100).toFixed(1)}% → ${(r.tgtPct*100).toFixed(0)}% <span class="sub">${pp(r.devPp)}pp</span></span></div>`;
+  });
+  if (R.plan){
+    const lines = Object.entries(R.plan.alloc||{}).map(([c,v])=>`${esc(c)} ¥${v.toLocaleString()}`).join(' · ');
+    html += `<div class="note">每月定投 <b>¥${R.plan.monthly.toLocaleString()}</b> 定向:${lines}<br>约 <b>${R.plan.months}</b> 个月不卖出即回到目标</div>`;
+  } else if (!(R.overweightSells||[]).length){
+    html += `<div class="note">可调各类均在目标带内 · 维持当前定投即可</div>`;
+  }
+  (R.overweightSells||[]).forEach(s=>{
+    html += `<div class="kv"><span>${esc(s.cls)} 超配(超 5/25 带)</span><span class="v" style="color:var(--red)">需转出 ${wan(s.excess)}</span></div>`;
+  });
+  const prop = (R.rows||[]).find(r=>r.cls==='房产' && r.act);
+  if (prop) html += `<div class="note" style="border-style:solid">房产超配 ${pp(prop.devPp)}pp:不可交易项,由金融资产增长逐步稀释</div>`;
+  el.innerHTML = html;
+});
+
+/* 现金流月账 */
+safe('现金流月账', function(){
+  const row = (name, amt, bold) =>
+    `<div class="kv"><span class="txt" ${bold?'style="font-weight:900"':''}>${name}</span>
+     <span class="v" style="color:${amt>=0?'var(--c-bond)':'var(--red)'}">${amt>=0?'+':'−'}¥${Math.abs(Math.round(amt)).toLocaleString()}</span></div>`;
+  const sect = (label, first) =>
+    `<div class="sect" style="${first?'':'border-top:2.5px dashed var(--ink);margin-top:12px;'}padding:${first?'0':'8px'} 0 2px;`
+    + `font-weight:900;font-size:11px;letter-spacing:.18em;opacity:.6">${label}</div>`;
+  let html = sect('收入 INCOME', true);
+  const inc = D.incomeItems||[];
+  if (inc.length) {
+    const groups = {};
+    inc.forEach(i=>{ (groups[i.成员||'未分组'] = groups[i.成员||'未分组']||[]).push(i); });
+    const multi = Object.keys(groups).length > 1;
+    for (const [m,items] of Object.entries(groups)) {
+      items.forEach(i=>{
+        let label = multi ? `${esc(m)}·${esc(i.项目)}` : esc(i.项目);
+        const det = i.扣缴明细 || {};
+        if (det.五险一金) label += ` <span class="sub">(五险一金¥${det.五险一金.toLocaleString()} 个税¥${(det.个税||0).toLocaleString()})</span>`;
+        html += row(label, i.金额);
+      });
+      if (multi) html += row(`${esc(m)} 小计`, items.reduce((s,x)=>s+x.金额,0), true);
+    }
+    html += row('当月实发合计', D.income, true);
+  } else html += row('当月实发(估)', D.income);
+  html += sect('固定支出 FIXED OUT');
+  (D.flowItems||[]).forEach(i=>{ html += row(esc(i.项目), i.金额); });
+  if ((D.subsMonthly||0) > 0) html += row('订阅(月折算)', -D.subsMonthly);
+  if ((D.insMonthly||0) > 0) html += row('保险保费(摊月)', -D.insMonthly);
+  html += row('固定支出合计', -D.fixedOut, true);
+  html += sect('结余与定投 NET');
+  html += row('月净现金流', D.netCashflow, true);
+  const dca = D.dca||{};
+  if ((dca.month||0) <= 0)
+    html += `<div class="kv"><span>定投计划</span><span class="v" style="color:var(--red)">结余≤0 暂停</span></div>`;
+  else {
+    const tgt = Object.keys(dca.targets||{}).join('、') || '沪深300ETF';
+    const pct = dca.mode==='按结余比例' ? `结余×${((dca.ratio||0)*100).toFixed(0)}%` : '固定月额';
+    html += `<div class="kv"><span class="txt">定投(${pct})</span><span class="v" style="color:var(--c-bond)">¥${dca.month.toLocaleString()}/月·${esc(dca.freq||'每周')}¥${(dca.per||0).toLocaleString()}→${esc(tgt)}</span></div>`;
+  }
+  html += `<div class="note">被动收入≈<b>¥${(D.passiveMonth||0).toLocaleString()}/月</b> 覆盖固定支出 ${((D.coverage||0)*100).toFixed(0)}%<br>应急可支撑 ${(D.runway||0).toFixed(0)} 个月 · 投资房若出租≈+¥${(D.hypoRent||0).toLocaleString()}/月</div>`;
+  document.getElementById('cashflow').innerHTML = html;
+});
+
+/* 订阅 */
+safe('订阅', function(){
+  document.getElementById('h-subs').textContent =
+    '月 ¥'+(D.subsMonthly||0).toLocaleString()+' / 年 ¥'+(D.subsYearly||0).toLocaleString();
+  const el = document.getElementById('subs');
+  if (!(D.subsMonthly||0) && !(D.subsItems||[]).length) {
+    el.innerHTML = '<div class="note">暂无订阅 · 在「订阅管理」添加</div>'; return;
+  }
+  let html = '';
+  (D.subsItems||[]).forEach(s=>{
+    if ((s.状态||'启用') !== '启用') return;
+    const orig = s.币种 !== 'CNY' ? `${esc(s.币种)}${(+s.金额).toFixed(2)}` : `¥${Math.round(s.金额)}`;
+    html += `<div class="kv"><span class="rowl">${chip(s)}<span class="txt">${esc(s.名称)} · ${esc(s.分类||'其他')}</span></span>
+      <span class="v">¥${(s.monthlyCny||0).toLocaleString()}/月 <span class="sub">(${orig}/${esc(s.周期)})</span></span></div>`;
+  });
+  const cats = Object.entries(D.subsByCategory||{}).sort((a,b)=>b[1]-a[1]);
+  const mx = cats.length ? cats[0][1] : 1;
+  html += cats.map(([cat,amt],i)=>
+    `<div class="fatrow" style="margin-top:${i?0:12}px">
+      <div class="lab"><span>${esc(cat)}</span><span>¥${amt.toLocaleString()}/月</span></div>
+      <div class="fatbar" style="height:16px"><i style="width:${(amt/mx*100).toFixed(1)}%;background:${T.palette[i%T.palette.length]}" class="${amt>=mx?'full':''}"></i></div>
+    </div>`).join('');
+  const pf = D.fixedOut ? (D.subsMonthly/D.fixedOut) : 0, pi = D.income ? (D.subsMonthly/D.income) : 0;
+  html += `<div class="note">合计 <b>¥${(D.subsMonthly||0).toLocaleString()}/月</b> · 全年 ¥${(D.subsYearly||0).toLocaleString()}<br>占固定支出 ${(pf*100).toFixed(0)}% · 占税后收入 ${(pi*100).toFixed(0)}%</div>`;
+  el.innerHTML = html;
+});
+
+/* 扣费日历 */
+safe('扣费日历', function(){
+  const base = new Date((D.date||'').slice(0,10) + 'T00:00:00');
+  const y = base.getFullYear(), m = base.getMonth();
+  document.getElementById('h-cal').textContent = (D.date||'').slice(0,7) + ' · 补位灰显';
+  const first = new Date(y, m, 1), last = new Date(y, m+1, 0);
+  const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - (x.getDay()+6)%7); return x; };
+  const start = mondayOf(first);
+  const end = new Date(mondayOf(last)); end.setDate(end.getDate()+6);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const todayIso = iso(base);
+  const cal = D.subsCalendar||{};
+  let cells = ['一','二','三','四','五','六','日'].map(w=>`<div class="cal-h">${w}</div>`);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+    const k = iso(d), items = cal[k]||[];
+    let cls = 'cal-d';
+    if (d.getMonth() !== m) cls += ' cal-out';
+    if (k === todayIso) cls += ' cal-today';
+    const body = items.map(it=>`<div class="cal-ev">${chip(it,true)}¥${it.chargeCny||0}</div>`).join('');
+    cells.push(`<div class="${cls}"><div class="cal-n">${d.getDate()}</div>${body}</div>`);
+  }
+  const up = (D.subsUpcoming||[]).slice(0,6).map(u=>
+    `<div class="kv"><span class="rowl">${chip(u)}<span class="txt">${esc(u.名称)} · ${u.days}天后</span></span><span class="v">¥${(u.chargeCny||0).toLocaleString()}</span></div>`).join('')
+    || '<div class="note">近 30 天无待扣</div>';
+  document.getElementById('calendar').innerHTML =
+    `<div class="cal-grid">${cells.join('')}</div>
+     <div style="margin:12px 0 2px;font-weight:900;font-size:12px;letter-spacing:.1em">近 30 天待扣</div>${up}`;
+});
+
+/* 保险 */
+safe('保险', function(){
+  const el = document.getElementById('insurance');
+  const items = D.insItems||[];
+  if (!items.length) { el.innerHTML = '<div class="note">暂无保单 · 在「保险」Tab 录入</div>'; return; }
+  let html = '';
+  for (const [m,g] of Object.entries(D.insByMember||{})) {
+    const cover = Object.entries(g.保额||{}).filter(([,v])=>v>0)
+      .map(([k,v])=>`${esc(k)} ${(v/1e4).toFixed(0)}万`).join(' · ');
+    html += `<div class="kv"><span class="txt"><span style="font-weight:900">${esc(m)}</span> <span class="sub">(${g.保单数}单)</span> ${cover||'—'}</span>
+      <span class="v">¥${(g.年缴合计||0).toLocaleString()}/年</span></div>`;
+  }
+  items.filter(i=>i.nextDue).sort((a,b)=>a.nextDue<b.nextDue?-1:1).slice(0,4).forEach(i=>{
+    const till = i.保障至 ? ` · 保至${esc(i.保障至)}` : '';
+    html += `<div class="kv" style="opacity:.75"><span class="txt">${esc(i.成员||'')}·${esc(i.产品||'')} 缴费 ${esc(i.nextDue)}${till}</span>
+      <span class="v">¥${(i.perDue||0).toLocaleString()}/${esc(i.频率||'年')}</span></div>`;
+  });
+  html += `<div class="note">缴费中年缴合计 <b>¥${(D.insYearly||0).toLocaleString()}</b> · 摊月 ¥${(D.insMonthly||0).toLocaleString()}（已计入固定支出）</div>`;
+  el.innerHTML = html;
+});
+
+/* 负债台账 */
+safe('负债台账', function(){
+  let html = '';
+  const ln = D.loans||{};
+  (ln.items||[]).forEach(x=>{
+    if (x.状态 !== '在还' || !x.余额) return;
+    const end = x.还清约 ? ` · 还清约${esc(x.还清约)}` : '';
+    html += `<div class="kv"><span class="txt">${esc(x.名称)}<span class="sub">${end}</span></span><span class="v">¥${x.余额.toLocaleString()}</span></div>`;
+  });
+  if (!html) html = '<div class="note">无在还负债</div>';
+  else {
+    html += `<div class="kv"><span style="font-weight:900">在还合计</span><span class="v">¥${(ln.totalBal||0).toLocaleString()}</span></div>`;
+    html += `<div class="note">利息月耗合计 <b>¥${(ln.totalInt||0).toLocaleString()}</b><br>月供中的本金是资产内转移，非消耗</div>`;
+  }
+  document.getElementById('lever').innerHTML = html;
+});
+
+/* 平台分布 */
+safe('平台分布', function(){
+  const ps = D.platforms||[];
+  const el = document.getElementById('platforms');
+  if (!ps.length) { el.innerHTML = '<div class="note">持仓表加「账户」列后显示</div>'; return; }
+  const fin = D.financial || 1;
+  const mx = ps[0][1] || 1;
+  let html = ps.map(([name,v],i)=>
+    `<div class="fatrow">
+      <div class="lab"><span>${esc(name)}</span><span>${(v/1e4).toFixed(1)}万 · ${(v/fin*100).toFixed(0)}%</span></div>
+      <div class="fatbar" style="height:16px"><i style="width:${(v/mx*100).toFixed(1)}%;background:${T.palette[i%T.palette.length]}" class="${v>=mx?'full':''}"></i></div>
+    </div>`).join('');
+  const [topName, topV] = ps[0];
+  if (topV/fin > 0.5)
+    html += `<div class="note">⚠ <b>${esc(topName)} 集中 ${(topV/fin*100).toFixed(0)}%</b> 金融资产——单平台风险留意</div>`;
+  el.innerHTML = html;
+});
+
+/* 财务体质 */
+safe('财务体质', function(){
+  const gap = Math.max(0, (D.fixedOut||0) - (D.passiveMonth||0));
+  const covNote = gap > 0
+    ? `被动收入距全覆盖固定支出还差 <b>¥${Math.round(gap).toLocaleString()}/月</b>`
+    : '被动收入已<b>全覆盖</b>固定支出';
+  document.getElementById('fitness').innerHTML =
+    `<div class="kv"><span>总资产(含房产)</span><span class="v">${wan(D.grossAssets)}</span></div>
+     <div class="kv"><span>总负债</span><span class="v" style="color:var(--red)">−${wan(D.totalDebt)}</span></div>
+     <div class="kv"><span>净资产</span><span class="v">${wan(D.networth)}</span></div>
+     <div class="kv"><span>整体杠杆率</span><span class="v">${((D.leverage||0)*100).toFixed(1)}%</span></div>
+     <div class="kv"><span>可变现资产(即时+数日)</span><span class="v">${wan(D.liquid)}</span></div>
+     <div class="kv"><span>被动收入覆盖率</span><span class="v">${((D.coverage||0)*100).toFixed(1)}%</span></div>
+     <div class="note">${covNote} · 投资房若出租≈+¥${(D.hypoRent||0).toLocaleString()}/月</div>`;
+});
+
+/* 压力测试 */
+safe('压力测试', function(){
+  const el = document.getElementById('stress');
+  const S = D.stress;
+  if (!S || !S.length){ el.innerHTML = '<div class="note">暂无数据</div>'; return; }
+  let html = '';
+  S.forEach(s=>{
+    html += `<div class="kv"><span class="txt">${esc(s.name)}</span>
+      <span class="v"><span style="color:var(--red)">${(s.ddPct*100).toFixed(1)}%</span>
+      <span class="sub">剩${(s.nwAfter/1e4).toFixed(0)}万 · 杠杆${s.levAfter!=null?(s.levAfter*100).toFixed(1)+'%':'—'}</span></span></div>`;
+  });
+  html += `<div class="note">负债不随资产缩水——下跌时杠杆率自动放大,这正是压测要盯的数字(当前 ${((D.leverage||0)*100).toFixed(1)}%)</div>`;
+  el.innerHTML = html;
+});
+
+/* 保险缺口 */
+safe('保险缺口', function(){
+  const el = document.getElementById('insgap');
+  const G = D.insGap;
+  if (!G){ el.innerHTML = '<div class="note">暂无数据 · 需保单与收入记录</div>'; return; }
+  const w = v => (v/1e4).toFixed(0)+'万';
+  const L = G.life;
+  let html = `<div class="kv"><span class="txt">寿险(家庭) <span class="sub">负债+${G.years}年支出</span></span>
+    <span class="v" style="${L.gap>0?'color:var(--red)':''}">${w(L.have)} / 需 ${w(L.need)}</span></div>`;
+  (G.ci||[]).forEach(c=>{
+    html += `<div class="kv"><span class="txt">重疾·${esc(c.member)} <span class="sub">收入×${G.ciMult}年</span></span>
+      <span class="v" style="${c.gap>0?'color:var(--red)':''}">${w(c.have)} / 需 ${w(c.need)}${c.gap>0?' · 差'+w(c.gap):' ✓'}</span></div>`;
+  });
+  if (L.gap > 0)
+    html += `<div class="note" style="border-color:var(--red)">⚠ 定期寿险缺口 <b>${w(L.gap)}</b>:负债与家庭支出的身故敞口目前无对冲</div>`;
+  html += `<div class="note">口径可在 insurance.json 加「缺口假设」调整(寿险支出年数/重疾收入倍数)</div>`;
+  el.innerHTML = html;
+});
+
+/* 流动性瀑布 */
+safe('流动性瀑布', function(){
+  const el = document.getElementById('waterfall');
+  const lq = D.liq||{}, fo = D.fixedOut||1;
+  const rungs = [
+    ['① 即时', lq['即时']||0, '现金/货基 · 当日'],
+    ['② 数日', lq['数日']||0, '卖ETF/理财/投顾 · T+1~7'],
+    ['③ 保单贷款', D.policyLoan||0, '现价×80% · 复利不中断'],
+    ['④ 锁定/极低', (lq['锁定']||0)+(lq['极低']||0), '增额寿本体/房产 · 最后手段'],
+  ];
+  let cum = 0, html = '';
+  rungs.forEach(([n,v,t])=>{
+    cum += v;
+    html += `<div class="kv"><span class="txt">${n} <span class="sub">${t}</span></span>
+      <span class="v">${(v/1e4).toFixed(0)}万 <span class="sub">累计撑${(cum/fo).toFixed(0)}月</span></span></div>`;
+  });
+  html += `<div class="note">自上而下动用:先流动性后收益性 · ③ 不卖出增额寿即可放款 <b>${((D.policyLoan||0)/1e4).toFixed(0)}万</b>,适合中短期周转</div>`;
+  el.innerHTML = html;
+});
+
+/* SBBI 历史回放:年度柱条 + 关键统计 */
+safe('历史回放', function(){
+  const el = document.getElementById('sbbi');
+  const S = D.sbbi;
+  if (!S || !(S.perYear||[]).length){ el.innerHTML = '<div class="note">缺 sbbi_returns.json · 无法回放</div>'; return; }
+  const per = S.perYear;
+  const wTxt = Object.entries(S.weights||{}).filter(([,v])=>v>0.001)
+    .map(([c,v])=>`${c} ${(v*100).toFixed(0)}%`).join(' / ');
+  const sub = document.getElementById('sbbi-sub');
+  if (sub) sub.textContent = `SBBI ${per[0].year}–${per[per.length-1].year} · 权重 ${wTxt}`;
+  // 年度柱条 SVG:零线居中偏上,红负绿正,极值标数
+  const W = 860, H = 170, top = 18, bot = 26;
+  const mx = Math.max(...per.map(p=>p.r)), mn = Math.min(...per.map(p=>p.r));
+  const y0 = top + (H-top-bot) * (mx / (mx - mn));
+  const sy = (H-top-bot) / (mx - mn);
+  const bw = W / per.length;
+  let g = `<line x1="0" x2="${W}" y1="${y0}" y2="${y0}" stroke="#111" stroke-width="2"/>`;
+  const rMax = per.reduce((a,b)=>b.r>a.r?b:a), rMin = per.reduce((a,b)=>b.r<a.r?b:a);
+  per.forEach((p,i)=>{
+    const h = Math.abs(p.r) * sy;
+    const y = p.r >= 0 ? y0 - h : y0;
+    const up = p.r >= 0;
+    g += `<rect x="${(i*bw+2).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw-4).toFixed(1)}" height="${Math.max(h,1).toFixed(1)}"
+      fill="${up?'#1baf7a':'#e34948'}" stroke="#111" stroke-width="1.5"><title>${p.year} · ${(p.r*100).toFixed(1)}% (CPI ${(p.cpi*100).toFixed(1)}%)</title></rect>`;
+    g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="9" font-weight="800" fill="#111">${String(p.year).slice(2)}</text>`;
+    if (p === rMax || p === rMin)
+      g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${(up? y-4 : y+h+11).toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="900" fill="#111">${(p.r*100).toFixed(0)}%</text>`;
+  });
+  const pct = v => (v>=0?'+':'−')+Math.abs(v*100).toFixed(1)+'%';
+  let html = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block" role="img" aria-label="组合历史年度收益"> ${g}</svg>`;
+  html += `<div class="kpis" style="grid-template-columns:repeat(4,1fr);margin-top:14px">
+    <div class="kpi"><div class="l">全期年化(名义/实际)</div><div class="v" style="font-size:19px">${pct(S.cagr)} / ${pct(S.realCagr)}</div></div>
+    <div class="kpi"><div class="l">最大回撤(年度路径)</div><div class="v" style="font-size:19px;color:var(--red)">${(S.maxDD*100).toFixed(1)}%</div></div>
+    <div class="kpi"><div class="l">负收益年数</div><div class="v" style="font-size:19px">${S.negYears} / ${per.length}</div></div>
+    <div class="kpi"><div class="l">最长水下(未创新高)</div><div class="v" style="font-size:19px">${S.longestUnder} 年</div></div>
+  </div>`;
+  html += `<div class="note">最差:${(S.worst||[]).map(p=>`${p.year} ${pct(p.r)}`).join(' · ')} ── 出现这种年份属于设计内,再平衡纪律靠它赚钱<br>
+    口径:权益→A股整体全收益、固收→长期国债、现金→短债、黄金→上海金;不含房产与杠杆;美股敞口按A股近似,实际分散度更好</div>`;
+  el.innerHTML = html;
+});
+
+/* 警戒带（告警 + 数据提示） */
+safe('警戒带', function(){
+  const nw = PD.networth || 1;
+  const classes = PD.classes || {};
+  function badge(icon){
+    if(icon==='🔴') return ['badge','红牌'];
+    if(icon==='🟡') return ['badge y','黄牌'];
+    if(icon==='🟠') return ['badge o','提示'];
+    if(icon==='warn') return ['badge y','留意'];
+    return ['badge o','提示'];
+  }
+  const items = [];
+  (PD.alerts||[]).forEach(([icon,msg])=>{
+    let extra='';
+    if(msg.indexOf('黄金')>=0 && msg.indexOf('下限')>=0){
+      const gap=(0.03*nw - (classes['黄金']||0))/1e4;
+      if(gap>0) extra=` ── 距 3% 下限还差约 ${gap.toFixed(1)} 万`;
+    }
+    const [cls,label]=badge(icon);
+    items.push(`<div class="tape-item"><span class="${cls}">${label}</span>${esc(msg)}${extra}</div>`);
+  });
+  if (PD.fxLive === false)
+    items.push(`<div class="tape-item"><span class="badge y">留意</span>汇率为兜底值（非实时），美股/港股市值可能略有偏差</div>`);
+  (PD.warnings||[]).forEach(([lv,m])=>{
+    const [cls,label]=badge(lv);
+    items.push(`<div class="tape-item"><span class="${cls}">${label}</span>${esc(m)}</div>`);
+  });
+  document.getElementById('tape-in').innerHTML = items.join('') || '<div class="tape-item">✅ 当前无告警</div>';
+});
+
+/* 页脚:数据源 + 行情截至(A/港 与 美股 各自最后K线日) */
+safe('页脚', function(){
+  const t = PD.trends || {};
+  let usLast = '', cnLast = '';
+  Object.keys(t).forEach(k=>{
+    if (k.indexOf('hold:') !== 0) return;
+    const s = t[k]; if (!s || !s.length) return;
+    const d = s[s.length-1][0], nm = k.slice(5);
+    if (usNames.has(nm)) { if (d > usLast) usLast = d; }
+    else { if (d > cnLast) cnLast = d; }
+  });
+  const f = d => d ? d.slice(5).replace('-','/') : '—';
+  const fresh = (cnLast||usLast) ? ' · 行情 A/港 '+f(cnLast)+' · 美股 '+f(usLast) : '';
+  document.getElementById('foot-r').textContent =
+    'DATA: PANORAMA.DB · FX '+(PD.fxUSD||0).toFixed(4)+fresh+' · '+((PD.date||'').split(' ')[0]||'');
+  const pb = document.getElementById('print-btn');
+  if (pb) pb.addEventListener('click', ()=>window.print());
+});
+
+/* 演示脱敏:金额数字直接替换为 ***,百分比/结构/形状全保留 */
+safe('演示脱敏', function(){
+  const btn = document.getElementById('privacy-btn');
+  if (!btn) return;
+  const MONEY = /¥\s?[\d,.]+|[\d,.]+\s?万|(?:USD|HKD|EUR|GBP|JPY|CNY)\s?[\d,.]+/;
+  const mask = s => s.replace(/¥\s?[\d,.]+/g, '¥***').replace(/[\d,.]+(?=\s?万)/g, '***')
+    .replace(/(USD|HKD|EUR|GBP|JPY|CNY)\s?[\d,.]+/g, '$1 ***');
+  const FULL = ['#hero-v', '#rank li .v'];   // 裸数字金额(无 ¥/万 标记)的容器,子树数字全遮
+  let nodes = null;   // [{n, orig, all}] 含金额的文本节点,首次开启时扫描一次(动态渲染走 wan() 自动遮蔽)
+  const collectNodes = ()=>{
+    nodes = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => (n.parentElement && !/^(SCRIPT|STYLE)$/.test(n.parentElement.tagName)
+        && MONEY.test(n.nodeValue||'')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+    let n; while ((n = walker.nextNode())) nodes.push({n, orig: n.nodeValue});
+    FULL.forEach(sel => document.querySelectorAll(sel).forEach(el => {
+      const w2 = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let m; while ((m = w2.nextNode()))
+        if (/\d/.test(m.nodeValue) && !nodes.some(x => x.n === m)) nodes.push({n: m, orig: m.nodeValue, all: true});
+    }));
+  };
+  btn.addEventListener('click', ()=>{
+    const on = window._privacy = !window._privacy;
+    document.body.classList.toggle('privacy', on);
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? '🙈 脱敏中 · 点击恢复' : '👓 演示脱敏';
+    if (on){
+      if (!nodes) collectNodes();
+      nodes.forEach(x => { x.n.nodeValue = x.all ? x.orig.replace(/[\d,.]+/g, '***') : mask(x.orig); });
+    } else if (nodes) nodes.forEach(x => { x.n.nodeValue = x.orig; });
+    if (on) document.querySelectorAll('[title]').forEach(e => {
+      const t = e.getAttribute('title') || '';
+      if (/[¥万]/.test(t)) { e.dataset.pt = t; e.removeAttribute('title'); }
+    });
+    else document.querySelectorAll('[data-pt]').forEach(e => {
+      e.setAttribute('title', e.dataset.pt); delete e.dataset.pt;
+    });
+    if (HAS_EC) document.querySelectorAll('.chart').forEach(cEl => {
+      const ch = echarts.getInstanceByDom(cEl); if (!ch) return;
+      const yA = ch.getOption().yAxis || [];
+      const opt = {};
+      if (yA.length) opt.yAxis = yA.map(() => ({axisLabel: {show: !on}}));  // 金额轴隐藏,%轴一并(结构仍可讲)
+      if (cEl.id === 'c_cf_trend') opt.tooltip = {show: !on};               // 该图 tooltip 含 ¥ 明细
+      if (opt.yAxis || opt.tooltip) ch.setOption(opt);
+    });
+  });
+});
+
+/* ═══ ECharts（粗野海报风）═══ */
+const TIP = {backgroundColor:'#111', borderWidth:0,
+  textStyle:{color:'#f4f1ea',fontSize:12,fontFamily:T.sans,fontWeight:700}};
+
+/* 旭日图（下钻 + 联动） */
+safe('旭日图', ()=>{
+  const total = D.networth;
+  const data = (D.tree||[]).map((c,i)=>{
+    const base = CCOL[c.name]||T.palette[i%T.palette.length];
+    const mid = lighten(base,0.30), leaf = lighten(base,0.55);
+    return {name:c.name,itemStyle:{color:base},
+      children:(c.children||[]).map(s=>({name:s.name,itemStyle:{color:mid},
+        children:(s.children||[]).map(x=>({name:x.name,value:x.value,itemStyle:{color:leaf}}))}))};
+  });
+  const lg = document.getElementById('c_tree_legend');
+  if (lg) lg.innerHTML = (D.tree||[]).map((c,i)=>{
+    const val = (D.classes||{})[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
+    return `<div style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12.5px;font-weight:800">
+      <i style="width:12px;height:12px;border:2px solid #111;background:${col};flex:none"></i>
+      <span style="flex:1">${esc(c.name)}</span>
+      <span style="font-weight:900">${(val/total*100).toFixed(1)}%</span></div>`;
+  }).join('');
+  if (!HAS_EC) { ecFallback('c_tree'); return; }
+  const el = document.getElementById('c_tree');
+  const chart = echarts.init(el);
+  const lbl = document.createElement('div');
+  lbl.title = '点击返回最上层';
+  lbl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
+    +'width:118px;height:118px;border-radius:50%;display:flex;flex-direction:column;'
+    +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
+    +'z-index:5;line-height:1.4;background:#f4f1ea;color:#111;font-weight:900;'
+    +'border:3px solid #111;box-shadow:3px 3px 0 #111';
+  el.appendChild(lbl);
+  const setLbl = (name,val)=>{ lbl.innerHTML =
+    `<div style="font-size:10.5px;font-weight:800">${esc(name)}</div>`
+    +`<div style="font-size:15px">${wan(val)}</div>`
+    +`<div style="font-size:10.5px;font-weight:800">${(val/total*100).toFixed(1)}%</div>`; };
+  let curRoot = {name:'净资产',val:total};
+  const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
+  resetLbl();
+  chart.setOption({
+    tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
+    series:[{type:'sunburst',data,radius:['30%','98%'],center:['50%','50%'],
+      sort:null,nodeClick:false,emphasis:{focus:'ancestor'},
+      itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
+      levels:[
+        {},
+        {r0:'30%',r:'50%',label:{rotate:'tangential',color:'#fff',fontSize:12,fontWeight:900,
+          formatter:p=>p.name,minAngle:8},itemStyle:{borderWidth:2.5}},
+        {r0:'50%',r:'72%',label:{rotate:'tangential',color:'#111',fontSize:10,fontWeight:700,
+          formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8},itemStyle:{borderWidth:2}},
+        {r0:'72%',r:'98%',label:{rotate:'radial',color:'#111',fontSize:9.5,fontWeight:700,
+          formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1.5}}
+      ]}]
+  });
+  const renderAt = arr => chart.setOption({series:[{data:arr}]});
+  lbl.addEventListener('click',()=>{renderAt(data);curRoot={name:'净资产',val:total};resetLbl();
+    window._showTotal && window._showTotal();});   // 回到顶层 → 右侧联动总资产走势
+  chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
+  chart.on('mouseout',resetLbl);
+  chart.on('click',p=>{
+    const nm = p.name, nd = p.data;
+    if (nd && nd.children && nd.children.length){ curRoot={name:nm,val:p.value}; resetLbl(); renderAt(nd.children); }
+    if (window._catNames && window._catNames.has(nm) && D.trends['cat:'+nm]) window._showTrend && window._showTrend('cat:'+nm,nm);
+    else if (window._subMembers && window._subMembers[nm]) {
+      const mem = window._subMembers[nm].filter(n=>D.trends['hold:'+n]);
+      if (mem.length){
+        const dset = new Set();
+        const maps = mem.map(n=>{const o={};D.trends['hold:'+n].forEach(a=>{o[a[0]]=a[1];dset.add(a[0]);});return o;});
+        const ax = Array.from(dset).sort(), last = new Array(maps.length).fill(null);
+        const series = ax.map(d=>{let s=0;for(let i=0;i<maps.length;i++){if(maps[i][d]!=null)last[i]=maps[i][d];if(last[i]!=null)s+=last[i];}return [d,s];});
+        window._renderTrend(series,nm);
+      } else window._renderTrend && window._renderTrend(null,nm);
+    }
+    else if (D.trends['hold:'+nm]) window._showTrend && window._showTrend('hold:'+nm,nm);
+    else window._showTrend && window._showTrend(null,nm);
+  });
+});
+
+/* 现金流月度走势 */
+safe('现金流月度走势', ()=>{
+  const h = D.cashflowHistory||[];
+  const el = document.getElementById('c_cf_trend');
+  if (!h.length){
+    el.style.display='none';
+    const note=document.getElementById('cf-note');
+    note.style.display='block';
+    note.textContent='尚无月度记录 · 每次重新估值会记下当月草稿，对账确认后锁定';
+    return;
+  }
+  if (!HAS_EC){ ecFallback('c_cf_trend'); return; }
+  const barData = h.map(r=>{
+    const ok = r.已对账==='是';
+    return {value:r.净结余,itemStyle:{color:ok?'#2a78d6':'rgba(0,0,0,0)',borderColor:'#111',
+      borderWidth:2,borderType:ok?'solid':'dashed',borderRadius:0}};
+  });
+  const lineData = h.map(r=>({value:+(r.储蓄率*100).toFixed(1),
+    symbol:r.已对账==='是'?'circle':'emptyCircle',symbolSize:8,
+    itemStyle:{color:'#eda100',borderColor:'#111',borderWidth:2}}));
+  echarts.init(el).setOption({
+    tooltip:{trigger:'axis',...TIP,formatter:params=>{
+      const r = h[params[0].dataIndex];
+      const tag = r.已对账==='是'?'已对账':'草稿';
+      return `${r.月份} ${tag}<br>净结余 ¥${r.净结余.toLocaleString()}<br>储蓄率 ${(r.储蓄率*100).toFixed(1)}%`
+        + (r.其他实际支出?`<br>其他支出 ¥${r.其他实际支出.toLocaleString()}`:'');
+    }},
+    legend:{data:['净结余','储蓄率'],textStyle:{color:'#111',fontSize:11,fontWeight:700},top:0},
+    grid:{left:52,right:44,top:30,bottom:22},
+    xAxis:{type:'category',data:h.map(r=>r.月份),
+      axisLine:{lineStyle:{color:'#111',width:2}},
+      axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans}},
+    yAxis:[
+      {type:'value',splitLine:{lineStyle:{color:'#e4e0d4'}},
+        axisLabel:{color:'#111',fontSize:9,fontWeight:700,formatter:v=>(v/1e4).toFixed(1)+'万'}},
+      {type:'value',min:0,max:60,splitLine:{show:false},
+        axisLabel:{color:'#111',fontSize:9,fontWeight:700,formatter:'{value}%'}}
+    ],
+    series:[
+      {name:'净结余',type:'bar',yAxisIndex:0,barWidth:'46%',data:barData},
+      {name:'储蓄率',type:'line',yAxisIndex:1,smooth:false,data:lineData,
+        lineStyle:{color:'#eda100',width:3}}
+    ]
+  });
+});
+
+/* 选中资产走势（联动） */
+safe('选中资产走势', ()=>{
+  if (!HAS_EC){
+    ecFallback('c_trend');
+    window._renderTrend = window._showTrend = ()=>{};
+    return;
+  }
+  const tc = echarts.init(document.getElementById('c_trend'));
+  const hint = document.getElementById('c_trend_hint');
+  let curSeries = null, curTitle = '', curRange = 'all';
+  const RNG = {'all':1e9,'3m':66,'1m':22};
+  function draw(){
+    let s = curSeries;
+    if (!s || !s.length){
+      hint.textContent = curTitle ? (curTitle+'：暂无走势数据（无行情或未记录）') : '点击持仓地图查看走势';
+      tc.clear(); return;
+    }
+    if (curRange!=='all') s = s.slice(-RNG[curRange]);
+    const f = s[0][1], l = s[s.length-1][1], chg = f ? (l/f-1) : 0;
+    hint.textContent = `${curTitle} ── ${s.length}点 · 区间 ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`;
+    tc.setOption({
+      tooltip:{trigger:'axis',valueFormatter:v=>wan(v),
+        axisPointer:{lineStyle:{color:'#111',width:1.5,type:'dashed'}},...TIP},
+      grid:{left:54,right:14,top:14,bottom:26},
+      xAxis:{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
+        axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans,
+          formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
+        axisLine:{lineStyle:{color:'#111',width:2}}},
+      yAxis:{type:'value',scale:true,splitLine:{lineStyle:{color:'#e4e0d4'}},
+        axisLabel:{show:!window._privacy,color:'#111',fontSize:10,fontWeight:700,formatter:v=>(v/1e4).toFixed(0)+'万'}},
+      series:[{type:'line',smooth:false,data:s.map(p=>p[1]),
+        symbol:'circle',symbolSize:14,showSymbol:false,   // 平时隐藏,悬停处浮现 → 对齐净值走势的小绿点
+        itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
+        emphasis:{scale:false},
+        lineStyle:{color:'#111',width:4},
+        areaStyle:{color:'rgba(42,120,214,.15)'}}]
+    });
+  }
+  window._renderTrend = (series,title)=>{curSeries=series;curTitle=title;draw();};
+  window._showTrend = (key,title)=>window._renderTrend(key?D.trends[key]:null,title);
+  const TOTAL = (D.history||[]).map(r=>[r.date, r['总净资产']]);   // 总资产走势:直接取净值历史
+  window._showTotal = ()=>window._renderTrend(TOTAL.length?TOTAL:null, '总净资产');
+  window._subMembers = {};
+  (D.tree||[]).forEach(c=>(c.children||[]).forEach(s=>{window._subMembers[s.name]=(s.children||[]).map(x=>x.name);}));
+  window._catNames = new Set((D.tree||[]).map(c=>c.name));
+  document.querySelectorAll('.trendbar button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      curRange = b.dataset.r;
+      document.querySelectorAll('.trendbar button').forEach(x=>x.classList.toggle('on',x===b));
+      draw();
+    });
+  });
+  const sel = document.getElementById('c_trend_acct');
+  if (sel){
+    const accts = Object.keys(D.trends||{}).filter(k=>k.indexOf('acct:')===0).map(k=>k.slice(5));
+    sel.innerHTML = '<option value="">— 看账户历史 —</option>'
+      + accts.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    sel.addEventListener('change',()=>{ if(sel.value) window._showTrend('acct:'+sel.value, sel.value); });
+  }
+  window._showTotal();   // 默认展示总资产走势
+});
+
+window.addEventListener('resize',()=>HAS_EC&&document.querySelectorAll('.chart').forEach(e=>{
+  const c = echarts.getInstanceByDom(e); c && c.resize();
+}));
+</script>
+</body>
+</html>

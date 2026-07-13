@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  macOS 定时任务模板（launchd）。每个交易日收盘后 16:30 运行 run_daily.sh。
+  安装：
+    1) 把下面两处 /path/to/asset-panorama 换成本机实际路径
+    2) cp com.user.portfolio.plist ~/Library/LaunchAgents/
+    3) launchctl load ~/Library/LaunchAgents/com.user.portfolio.plist
+  停止：launchctl unload ~/Library/LaunchAgents/com.user.portfolio.plist
+  立即测试：launchctl start com.user.portfolio
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.portfolio</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/asset-panorama/run_daily.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>16</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/path/to/asset-panorama/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/asset-panorama/launchd.err.log</string>
+</dict>
+</plist>
