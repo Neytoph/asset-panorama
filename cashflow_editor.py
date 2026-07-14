@@ -14,8 +14,10 @@
 """
 import base64
 import json
+import os
 import html
 import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -34,9 +36,13 @@ import bill_import
 import insurance as ins_mod
 import loans as loans_mod
 import holdings_manager as hold_mod
+import metrics
 
 BASE = Path(__file__).resolve().parent
-HOST, PORT = "127.0.0.1", 8765
+HOST = "127.0.0.1"
+# 端口可配:PANORAMA_PORT=8766 python3 cashflow_editor.py
+# (想同时开演示面板和自己的面板时用得上)
+PORT = int(os.environ.get("PANORAMA_PORT") or 8765)
 _REBUILD_LOCK = threading.Lock()
 
 # 持仓全景主题 → 已生成的静态文件（run_daily.sh / panorama_themes.py + panorama_variants.py 产出）
@@ -131,7 +137,7 @@ def expense_display(amt):
     return abs(amt) if amt else 0
 
 
-def page(cf, msg="", rebuilt=False):
+def page(cf, msg="", rebuilt=False, reward=""):
     c = compute(cf)
     d = cf.get("定投计划", {})
     tgt = next(iter(d.get("标的", {}).items()), ("沪深300ETF", {"代码": "510300"}))
@@ -173,6 +179,7 @@ def page(cf, msg="", rebuilt=False):
         </div>''' for i in cf.get("月度收支", []))
 
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
     ratio_pct = d.get("结余投入比例", 0.8)
     fx = _editor_fx()
     subs_m = c.get("subs_monthly", 0)
@@ -206,7 +213,9 @@ def page(cf, msg="", rebuilt=False):
  .primary{{background:#1554d1;color:#fff}} .ghost{{background:#eee;color:#333}}
  details summary{{cursor:pointer;color:#666;font-size:13px}} .ok{{background:#e7f7ec;color:#1a7f37;padding:10px 14px;border-radius:10px;margin-bottom:16px}}
  .hint{{font-size:12px;color:#999;margin-top:6px}}
+{OB_CSS}
 </style></head><body><div class="wrap">
+{onboard_hint("flow", onboard_state())}
 <h1>💰 现金流编辑器</h1>
  <div class="sub">定投额按真实结余自动算 · 月度支出 + 订阅月费一并计入固定支出</div>
 {banner}
@@ -373,7 +382,7 @@ def _opt(vals, cur):
     return "".join(f'<option value="{v}"{" selected" if v == cur else ""}>{v}</option>' for v in vals)
 
 
-def subs_page(subs_list, msg="", rebuilt=False):
+def subs_page(subs_list, msg="", rebuilt=False, reward=""):
     fx = _editor_fx()
     subs_mod.sync_icons(subs_list)
     sub_cats = list(subs_mod.CAT_STYLE.keys())
@@ -381,6 +390,7 @@ def subs_page(subs_list, msg="", rebuilt=False):
         f'<option value="{c}"{" selected" if c == "其他" else ""}>{c}</option>' for c in sub_cats)
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
     fx_js = json.dumps({"USD": fx["USD"], "HKD": fx["HKD"], "CNY": 1.0})
 
     def row_html(s):
@@ -597,7 +607,7 @@ def _recon_dca(cf, actual_net):
     return d.get("固定月额", 0)
 
 
-def recon_page(msg="", rebuilt=False, month=None):
+def recon_page(msg="", rebuilt=False, month=None, reward=""):
     cf = load_cf()
     est = compute(cf)
     month = month or datetime.date.today().strftime("%Y-%m")
@@ -612,6 +622,7 @@ def recon_page(msg="", rebuilt=False, month=None):
     prefill_note = (cur.get("对账备注") or "") if cur else ""
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
 
     hist_rows = ""
     for r in reversed(history):
@@ -808,9 +819,10 @@ def parse_recon_save(fields):
         month, income, other, dca, passive, subs_m, fixed, note)
 
 
-def insurance_page(policies, msg="", rebuilt=False):
+def insurance_page(policies, msg="", rebuilt=False, reward=""):
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
     kind_opts = "".join(f'<option>{k}</option>' for k in ins_mod.KINDS)
     status_opts = "".join(f'<option>{s}</option>' for s in ins_mod.STATUSES)
     freq_opts = "".join(f'<option>{f}</option>' for f in ins_mod.FREQS)
@@ -950,10 +962,240 @@ def parse_insurance_save(fields):
     return out
 
 
-def loans_page(items, msg="", rebuilt=False):
+GOAL_CSS = """
+ body{font-family:-apple-system,"PingFang SC",system-ui,sans-serif;background:#f4f5f7;color:#222;margin:0;padding:24px}
+ .wrap{max-width:900px;margin:0 auto}
+ h1{font-size:20px;margin:0 0 4px} .sub{color:#888;font-size:13px;margin-bottom:18px}
+ .card{background:#fff;border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+ .card h2{font-size:15px;margin:0 0 10px}
+ label{display:block;font-size:12px;color:#666;margin:8px 0 4px}
+ input,select{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px}
+ .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 12px}
+ .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}
+ .ev{border:1px solid #eee;border-radius:12px;padding:12px 14px;margin-bottom:12px;background:#fafbfc}
+ .ev .row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+ .del{border:none;background:#fbeaea;color:#c0392b;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
+ .add{border:1px dashed #bbb;background:#fafafa;color:#555;border-radius:8px;padding:10px;width:100%;cursor:pointer;margin-top:6px}
+ .btns{display:flex;gap:12px;margin-top:14px}
+ button.save{flex:1;padding:12px;border:none;border-radius:10px;font-size:15px;cursor:pointer}
+ .primary{background:#1554d1;color:#fff} .ghost{background:#eee;color:#333}
+ .ok{background:#e7f7ec;color:#1a7f37;padding:10px 14px;border-radius:10px;margin-bottom:16px}
+ .hint{font-size:12px;color:#999}
+ .tip{background:#fffbe9;border:1px solid #f0dc9a;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:12px;line-height:1.7}
+ @media(max-width:760px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+"""
+
+
+def goal_page(msg="", rebuilt=False, reward=""):
+    """目标与重大事件:面板的导航中心。没有这一步,系统只会说「现在怎样」,不会说「要去哪」。"""
+    import storage
+    g = storage.load_doc("goal", {})
+    hx = g.get("换房") or {}
+    tgt = (g.get("目标态") or {}).get("大类") or {}
+    fi = g.get("FI") or {}
+    events = g.get("重大事件") or []
+    notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
+    banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
+    ob = onboard_state()
+    hint = onboard_hint("goal", ob)
+
+    conf_opts = "".join(f'<option>{c}</option>' for c in metrics.CONFIDENCE)
+    ev_rows = ""
+    for e in events:
+        conf = e.get("确信度", "计划")
+        sel = conf_opts.replace(f">{conf}<", f" selected>{conf}<", 1)
+        rng = e.get("月度影响区间") or {}
+        dm = "" if rng else str(sum((e.get("月度影响") or {}).values()) or "")
+        ev_rows += f'''<div class="ev">
+  <div class="g4">
+   <div><label>名称</label><input name="ev_name" value="{esc(e.get("名称",""))}"></div>
+   <div><label>日期(YYYY-MM)</label><input name="ev_date" value="{esc(e.get("日期",""))}" placeholder="2029-09"></div>
+   <div><label>确信度</label><select name="ev_conf">{sel}</select></div>
+   <div><label>一次性金额(+进资产)</label><input name="ev_lump" type="number" step="any" value="{esc(e.get("一次性","") or "")}"></div>
+   <div><label>月储蓄影响(+=每月多存)</label><input name="ev_dm" type="number" step="any" value="{esc(dm)}"></div>
+   <div><label>区间下限(可空)</label><input name="ev_lo" type="number" step="any" value="{esc(rng.get("lo","") if rng else "")}"></div>
+   <div><label>区间上限(可空)</label><input name="ev_hi" type="number" step="any" value="{esc(rng.get("hi","") if rng else "")}"></div>
+   <div><label>说明</label><input name="ev_note" value="{esc(e.get("说明",""))}"></div>
+  </div>
+  <div class="row"><span class="hint">{"⏳ 育儿类:填「结束年月」和「月额区间」" if e.get("类型")=="育儿" else "确信度决定时间轴上的实线/虚线/点线,猜测类会输出区间"}</span>
+   <button type="button" class="del" onclick="this.closest('.ev').remove()">✕ 删除</button></div>
+ </div>'''
+
+    child = next((e for e in events if e.get("类型") == "育儿"), {})
+    crng = child.get("月额区间") or {}
+    return f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>目标与大事</title>
+<style>{GOAL_CSS}</style></head><body>
+<div class="wrap">
+{hint}
+<h1>🎯 目标与重大事件</h1>
+<div class="sub">面板的导航中心 —— 没有它,系统只会告诉你「现在怎样」,不会告诉你「要去哪」。</div>
+{banner}
+<form method="post" action="/save-goal">
+
+<div class="card">
+  <h2>财务自由口径</h2>
+  <div class="tip">FI 线只算<b>终身支出</b>(现金流里「终身」=否的项,如房贷、幼儿园,不计入)。
+   但育儿在孩子成年前<b>仍要供</b> —— 那笔钱单列为「育儿储备」,加进真·自由线。</div>
+  <div class="g3">
+    <div><label>安全提取率</label><input name="swr" type="number" step="0.001" value="{fi.get("提取率",0.035)}"></div>
+    <div><label>育儿月额下限</label><input name="child_lo" type="number" step="any" value="{esc(crng.get("lo",""))}" placeholder="8000"></div>
+    <div><label>育儿月额上限</label><input name="child_hi" type="number" step="any" value="{esc(crng.get("hi",""))}" placeholder="12000"></div>
+    <div><label>育儿结束(孩子成年,YYYY-MM)</label><input name="child_end" value="{esc(child.get("结束",""))}" placeholder="2040-09"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>换房计划(可选)</h2>
+  <div class="tip">卖掉现有房产 → 买一套更便宜的 → 净释放的钱进入金融资产。
+   量级通常<b>远超日常再平衡</b>,是面板 00 区的头号事件。</div>
+  <div class="g4">
+    <div><label>启用</label><select name="hx_on"><option value="1"{" selected" if hx.get("启用") else ""}>是</option><option value="0"{"" if hx.get("启用") else " selected"}>否</option></select></div>
+    <div><label>目标日</label><input name="hx_date" type="date" value="{esc(hx.get("目标日",""))}"></div>
+    <div><label>启动截止</label><input name="hx_start" type="date" value="{esc(hx.get("启动截止",""))}"></div>
+    <div><label>卖出账户名</label><input name="hx_sell" value="{esc(hx.get("卖出账户",""))}" placeholder="与 accounts.csv 一致"></div>
+    <div><label>新房预算上限(占净资产)</label><input name="hx_pct" type="number" step="0.01" value="{hx.get("买入预算上限占比",0.2)}"></div>
+    <div><label>预算封顶(元)</label><input name="hx_cap" type="number" step="any" value="{esc(hx.get("买入预算封顶",""))}"></div>
+    <div><label>交易成本率</label><input name="hx_cost" type="number" step="0.001" value="{hx.get("交易成本率",0.02)}"></div>
+    <div><label>过桥需自筹(元)</label><input name="hx_bridge" type="number" step="any" value="{esc(hx.get("过桥需自筹",""))}"></div>
+  </div>
+  <div class="hint" style="margin-top:8px">⚠ 过桥资金是<b>短期内必须拿得出的钱</b> —— 它不该放在权益里。</div>
+</div>
+
+<div class="card">
+  <h2>目标态大类配置(换房后要长期持有的组合)</h2>
+  <div class="g4">
+    <div><label>房产</label><input name="t_prop" type="number" step="0.01" value="{tgt.get("房产",0.2)}"></div>
+    <div><label>权益</label><input name="t_eq" type="number" step="0.01" value="{tgt.get("权益",0.5)}"></div>
+    <div><label>债券类固收</label><input name="t_bond" type="number" step="0.01" value="{tgt.get("债券类固收",0.2)}"></div>
+    <div><label>现金</label><input name="t_cash" type="number" step="0.01" value="{tgt.get("现金",0.05)}"></div>
+    <div><label>黄金</label><input name="t_gold" type="number" step="0.01" value="{tgt.get("黄金",0.05)}"></div>
+  </div>
+  <div class="hint" style="margin-top:8px">SBBI 历史回放会用<b>这套权重</b>穿越 2005–2025(当前权重换房后就作废了)。</div>
+</div>
+
+<div class="card">
+  <h2>重大事件(会改变月储蓄或资产的事)</h2>
+  <div class="tip">系统<b>只做加法</b>,不理解因果 —— 换房和房贷结清的日期一致性由你保证
+   (不一致会在「月储蓄阶梯」上一眼看出来)。<br>
+   确信度:<b>合同</b>=写死的(还清贷款/保费缴清) · <b>计划</b>=自己定的(换房) · <b>猜测</b>=拍脑袋(兴趣班,可填区间)。</div>
+  <div id="evs">{ev_rows}</div>
+  <button type="button" class="add" onclick="addEv()">+ 加一个事件</button>
+</div>
+
+<div class="btns">
+  <button class="save ghost" name="act" value="save">保存</button>
+  <button class="save primary" name="act" value="save_rebuild">保存并刷新全景</button>
+</div>
+</form>
+</div>
+<script>
+function addEv(){{
+  const d=document.createElement('div'); d.className='ev';
+  d.innerHTML=`<div class="g4">
+   <div><label>名称</label><input name="ev_name"></div>
+   <div><label>日期(YYYY-MM)</label><input name="ev_date" placeholder="2029-09"></div>
+   <div><label>确信度</label><select name="ev_conf">{conf_opts}</select></div>
+   <div><label>一次性金额(+进资产)</label><input name="ev_lump" type="number" step="any"></div>
+   <div><label>月储蓄影响(+=每月多存)</label><input name="ev_dm" type="number" step="any"></div>
+   <div><label>区间下限(可空)</label><input name="ev_lo" type="number" step="any"></div>
+   <div><label>区间上限(可空)</label><input name="ev_hi" type="number" step="any"></div>
+   <div><label>说明</label><input name="ev_note"></div>
+  </div>
+  <div class="row"><span class="hint">确信度决定时间轴上的实线/虚线/点线</span>
+   <button type="button" class="del" onclick="this.closest('.ev').remove()">✕ 删除</button></div>`;
+  document.getElementById('evs').appendChild(d);
+}}
+{notify}
+</script>{SUBMIT_GUARD}</body></html>"""
+
+
+def parse_goal(form):
+    """表单 → goal doc。育儿(类型=育儿)由「财务自由口径」那几个字段单独生成。"""
+    import storage
+    g = storage.load_doc("goal", {})
+
+    def one(k, cast=float, default=None):
+        v = (form.get(k, [""])[0] or "").strip()
+        if not v:
+            return default
+        try:
+            return cast(v)
+        except ValueError:
+            return default
+
+    g["FI"] = {"提取率": one("swr", float, 0.035),
+               "实际回报情景": (g.get("FI") or {}).get("实际回报情景", [0.02, 0.04, 0.06])}
+    g["换房"] = {
+        "启用": form.get("hx_on", ["0"])[0] == "1",
+        "目标日": form.get("hx_date", [""])[0], "启动截止": form.get("hx_start", [""])[0],
+        "卖出账户": form.get("hx_sell", [""])[0],
+        "买入预算上限占比": one("hx_pct", float, 0.2),
+        "买入预算封顶": one("hx_cap", float),
+        "交易成本率": one("hx_cost", float, 0.02),
+        "过桥需自筹": one("hx_bridge", float, 0),
+        "说明": (g.get("换房") or {}).get("说明", ""),
+    }
+    g["目标态"] = {"日期": form.get("hx_date", [""])[0], "无房贷": True, "大类": {
+        "房产": one("t_prop", float, 0.2), "权益": one("t_eq", float, 0.5),
+        "债券类固收": one("t_bond", float, 0.2), "现金": one("t_cash", float, 0.05),
+        "黄金": one("t_gold", float, 0.05)}}
+
+    events = []
+    names = form.get("ev_name", [])
+    for i, nm in enumerate(names):
+        nm = (nm or "").strip()
+        if not nm:
+            continue
+
+        def f(key, cast=float):
+            vals = form.get(key, [])
+            v = (vals[i] if i < len(vals) else "") or ""
+            v = v.strip()
+            if not v:
+                return None
+            try:
+                return cast(v)
+            except ValueError:
+                return None
+        e = {"名称": nm, "日期": (form.get("ev_date", [""] * len(names))[i] or "").strip(),
+             "确信度": (form.get("ev_conf", [""] * len(names))[i] or "计划").strip(),
+             "说明": (form.get("ev_note", [""] * len(names))[i] or "").strip()}
+        lump = f("ev_lump")
+        if lump:
+            e["一次性"] = lump
+        lo, hi = f("ev_lo"), f("ev_hi")
+        if lo is not None and hi is not None:
+            e["月度影响区间"] = {"lo": lo, "mid": (lo + hi) / 2, "hi": hi}
+        else:
+            dm = f("ev_dm")
+            if dm:
+                e["月度影响"] = {"合计": dm}
+        events.append(e)
+
+    # 育儿事件由专门的字段生成(它不是时间点,是一段持续期)
+    c_lo, c_hi = None, None
+    try:
+        c_lo = float(form.get("child_lo", [""])[0] or 0) or None
+        c_hi = float(form.get("child_hi", [""])[0] or 0) or None
+    except ValueError:
+        pass
+    c_end = (form.get("child_end", [""])[0] or "").strip()
+    if c_lo and c_hi and c_end:
+        events.append({"名称": "育儿开销(至孩子成年)", "类型": "育儿", "结束": c_end,
+                       "确信度": "猜测",
+                       "月额区间": {"lo": c_lo, "mid": (c_lo + c_hi) / 2, "hi": c_hi},
+                       "说明": "不计入 FI 线(会结束),但结束前必须供 → 育儿储备"})
+    g["重大事件"] = events
+    return g
+
+
+def loans_page(items, msg="", rebuilt=False, reward=""):
     """负债台账：余额按月推演（基准年月+基准本金+利率+月供），含留尾测算器。"""
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
     type_opts = "".join(f'<option>{k}</option>' for k in loans_mod.TYPES)
     status_opts = "".join(f'<option>{s}</option>' for s in loans_mod.STATUSES)
 
@@ -1100,10 +1342,14 @@ def parse_loans_save(fields):
     return out
 
 
-def holdings_page(msg="", rebuilt=False):
-    """持仓管理：自动估值持仓（数量变动自动记 holdings_history）+ 手动账户金额。"""
+def holdings_page(msg="", rebuilt=False, reward=""):
+    """持仓管理：自动估值持仓（数量变动自动记 holdings_history）+ 手动账户金额。
+    引导第①步(还没有任何账户)时,「新增手动账户」自动展开并给常见账户示例——
+    这个页面本来是为「改已有账户」设计的,新用户没有账户可改,会卡住。"""
+    new_acct = not onboard_state()["done"].get("acct")
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
+    banner += reward or ""
     holdings = hold_mod.load_holdings()
     quotes = hold_mod.quote_map()
     manual = hold_mod.load_manual()
@@ -1196,7 +1442,9 @@ def holdings_page(msg="", rebuilt=False):
         padding:7px 0;border-bottom:1px solid #f0f0f0}}
  .ro{{background:#f4f5f7;color:#555;border-color:#eee}}
  @media(max-width:760px){{.pgrid{{grid-template-columns:repeat(2,1fr)}}.mrow{{grid-template-columns:1fr 1fr}}}}
+{OB_CSS}
 </style></head><body><div class="wrap">
+{onboard_hint(onboard_state()["cur"] if onboard_state()["cur"] in ("acct","hold") else "", onboard_state())}
 <h1>📦 持仓管理</h1>
 <div class="sub">改数量/新增/删除 → 保存时自动往 holdings_history 记一笔买入/卖出（成交价空则取最新行情），
 浮盈成本口径不会跑偏 · 手动账户金额在下方更新（写 manual_values 并盖日期戳）· 保存后当晚 19:30 定时任务照常重估</div>
@@ -1218,14 +1466,24 @@ def holdings_page(msg="", rebuilt=False):
   <h2>手动账户金额（{len(manual)} 项）</h2>
   <div class="hint">投顾/理财/存款/房产/期权等无法自动取价的条目；改了数值才盖新日期戳</div>
   {mrows}{autos}
-  <details style="margin-top:10px"><summary class="hint">+ 新增手动账户（accounts 加行 + 建手动值）</summary>
+  <details style="margin-top:10px"{" open" if new_acct else ""}>
+   <summary class="hint">+ 新增手动账户（accounts 加行 + 建手动值）</summary>
+   {'''<div class="tip" style="background:#fffbe9;border:1px solid #f0dc9a;border-radius:10px;
+     padding:9px 12px;font-size:12.5px;margin:8px 0;line-height:1.7">
+     常见账户,照着建:<b>日常现金</b>(工资进/开销出,类型=现金存款,流动性=即时) ·
+     <b>银行理财</b>(固收理财,数日) · <b>房产</b>(不动产,极低) · <b>增额寿</b>(类固收保险,锁定)。
+     <br>一次填一个,保存后再回来加下一个。</div>''' if new_acct else ""}
    <div class="pgrid" style="margin-top:6px">
     <div><label>账户名称</label><input name="a_name"></div>
-    <div><label>资产类型</label><input name="a_type" value="现金存款"></div>
+    <div><label>资产类型</label><input name="a_type" value="现金存款" list="atypes"></div>
     <div><label>金额</label><input name="a_value" type="number" step="any"></div>
-    <div><label>流动性</label><input name="a_liq" value="数日"></div>
+    <div><label>流动性</label><input name="a_liq" value="即时" list="aliq"></div>
     <div><label>备注</label><input name="a_note"></div>
    </div>
+   <datalist id="atypes"><option>现金存款</option><option>固收理财</option>
+    <option>类固收保险</option><option>不动产</option><option>投顾组合</option></datalist>
+   <datalist id="aliq"><option>即时</option><option>数日</option><option>锁定</option>
+    <option>极低</option></datalist>
   </details>
   <div class="btns">
    <button class="save primary" name="action" value="save_rebuild">💾 保存并刷新全景</button>
@@ -1314,6 +1572,175 @@ def _has_data():
     return False
 
 
+# ── 引导:四步,每步点亮一部分面板 ──────────────────────────────────
+# 设计原则(见 docs/2029-plan.md 与会话中的 grilling):
+#   · 不新建一套向导 UI —— 复用现有 Tab 的表单,只加「顺序 + 说明 + 下一步」
+#   · 每步保存后先给成果反馈(「净资产 30 万」),让填数据这件苦差事有即时回报
+#   · 没数据时全景 Tab 显示 demo(可点可下钻),但挂甩不掉的角标提醒「这不是你的数据」
+ONBOARD_STEPS = [
+    {"k": "acct", "tab": "hold", "n": "账户资产",
+     "why": "先把「你有多少钱」填对 —— 理财、存款、房产、日常现金。",
+     "get": "净资产、大类配置、资产全景",
+     "warn": "日常现金账户(工资进、开销出)一定要建 —— 它的月度余额变化是唯一诚实的储蓄信号。"},
+    {"k": "flow", "tab": "edit", "n": "收入支出",
+     "why": "你每月赚多少、花多少。",
+     "get": "储蓄率、现金流月账、财务自由推演",
+     "warn": "最容易犯的错:只填房贷房租,不填吃饭购物 → 储蓄率虚高一倍,后面所有推演跟着错。"},
+    {"k": "hold", "tab": "hold", "n": "持仓",
+     "why": "股票/ETF —— 能实时报价的那些。没有可以跳过。",
+     "get": "实时行情、持仓地图、浮盈、再平衡执行单",
+     "warn": ""},
+    {"k": "goal", "tab": "goal", "n": "目标与大事",
+     "why": "未来几年会改变你财务结构的事:换房、还清贷款、子女教育。",
+     "get": "未来大事时间轴、真·自由线、换房路线图",
+     "warn": "没有这一步,面板只会告诉你「现在怎样」,不会告诉你「要去哪」。"},
+]
+
+
+def onboard_state():
+    """→ {done:{k:bool}, cur:步骤k或None, all_done:bool}。判定只看「有没有实质内容」。"""
+    import storage
+    done = {}
+    try:
+        done["acct"] = bool(storage.load_table("accounts", []))
+    except Exception:
+        done["acct"] = False
+    try:
+        cf = storage.load_doc("cashflow", {})
+        done["flow"] = bool(cf.get("收入明细") and cf.get("月度收支"))
+    except Exception:
+        done["flow"] = False
+    try:
+        done["hold"] = bool(storage.load_table("holdings", []))
+    except Exception:
+        done["hold"] = False
+    try:
+        g = storage.load_doc("goal", {})
+        done["goal"] = bool(g.get("重大事件") or g.get("目标态"))
+    except Exception:
+        done["goal"] = False
+    cur = next((s["k"] for s in ONBOARD_STEPS if not done.get(s["k"])), None)
+    return {"done": done, "cur": cur, "all_done": cur is None}
+
+
+def onboard_bar(state, skipped=False):
+    """壳页顶部进度条。全部完成或用户点了跳过 → 不显示(引导退化为健康检查)。"""
+    if skipped or state["all_done"]:
+        return ""
+    cells = []
+    for i, s in enumerate(ONBOARD_STEPS):
+        k = s["k"]
+        if state["done"].get(k):
+            mark, cls = "✅", "ok"
+        elif k == state["cur"]:
+            mark, cls = "◉", "cur"
+        else:
+            mark, cls = "⬜", ""
+        cells.append(f'<button class="ob-step {cls}" data-tab="{s["tab"]}" data-step="{k}">'
+                     f'{mark} <b>{["①","②","③","④"][i]}</b> {s["n"]}</button>')
+    return ('<div id="obbar"><span class="ob-t">开始使用</span>'
+            + '<span class="ob-sep">—</span>'.join(cells)
+            + '<a class="ob-skip" href="/skip-onboard">跳过引导</a></div>')
+
+
+def onboard_hint(step_key, state):
+    """插在各 Tab 顶部的引导说明条。不在引导中 → 空。"""
+    if state["all_done"] or state["cur"] != step_key:
+        return ""
+    s = next((x for x in ONBOARD_STEPS if x["k"] == step_key), None)
+    if not s:
+        return ""
+    i = [x["k"] for x in ONBOARD_STEPS].index(step_key)
+    nxt = ONBOARD_STEPS[i + 1]["n"] if i + 1 < len(ONBOARD_STEPS) else None
+    warn = f'<div class="ob-warn">⚠ {esc(s["warn"])}</div>' if s["warn"] else ""
+    return f'''<div class="ob-hint">
+  <div class="ob-hd">第{["①","②","③","④"][i]}步 · {esc(s["n"])}</div>
+  <div class="ob-why">{esc(s["why"])}</div>
+  <div class="ob-get">填完你会解锁:<b>{esc(s["get"])}</b></div>
+  {warn}
+  <div class="ob-nx">保存后{"自动进入「"+esc(nxt)+"」" if nxt else "引导结束,进入完整面板"}</div>
+</div>'''
+
+
+def onboard_reward(step_key):
+    """保存后的即时成果:「你刚解锁了什么」——填数据这件苦差事必须有回报,
+    否则用户填完第一步会觉得「什么都没发生」然后流失。
+    返回一段追加到保存提示后面的文案(不在引导中 → 空)。"""
+    st = onboard_state()
+    if st["all_done"] and step_key != "goal":
+        # 全部填完后不再报喜(除了最后一步的收尾)
+        pass
+    try:
+        from portfolio_tracker import compute
+        R = compute()
+        nw, fin = R["networth"], R["financial"]
+    except Exception:
+        return ""
+    parts = []
+    if step_key == "acct" and nw:
+        parts.append(f"你的净资产:<b>¥{nw/1e4:,.1f}万</b>")
+        parts.append("大类配置和资产全景已点亮")
+    elif step_key == "flow":
+        try:
+            import cashflow_income as inc
+            cf = storage.load_doc("cashflow", {})
+            items = inc.income_items_net(cf)
+            income = sum(i["金额"] for i in items)
+            out = subs_mod.cashflow_fixed_out(cf, {"USD": 7.0, "HKD": 0.9, "CNY": 1.0})
+            net = income - out
+            if income:
+                parts.append(f"储蓄率:<b>{net/income*100:.0f}%</b>(月结余 ¥{net:,.0f})")
+                parts.append("现金流月账 + 财务自由推演已点亮")
+        except Exception:
+            pass
+    elif step_key == "hold" and fin:
+        parts.append(f"金融资产:<b>¥{fin/1e4:,.1f}万</b> · 实时行情已接上")
+        parts.append("持仓地图 / 浮盈 / 再平衡执行单已点亮")
+    elif step_key == "goal":
+        try:
+            g = storage.load_doc("goal", {})
+            if g.get("重大事件"):
+                parts.append(f"{len(g['重大事件'])} 个重大事件已进入时间轴")
+                parts.append("真·自由线 + 未来大事已点亮")
+        except Exception:
+            pass
+    if not parts:
+        return ""
+    nxt = ""
+    ks = [s["k"] for s in ONBOARD_STEPS]
+    if step_key in ks:
+        i = ks.index(step_key)
+        if i + 1 < len(ONBOARD_STEPS) and not st["done"].get(ONBOARD_STEPS[i + 1]["k"]):
+            nxt = f'<br>👉 下一步:<b>{ONBOARD_STEPS[i+1]["n"]}</b>'
+        elif st["all_done"]:
+            nxt = "<br>🎉 引导完成 —— 面板已全部点亮,进度条会消失。"
+    return f'<div class="ob-reward">🎁 解锁:{" · ".join(parts)}{nxt}</div>'
+
+
+OB_CSS = """
+.ob-reward{border:3px solid #1baf7a;background:#e7f7ec;padding:11px 14px;margin-top:10px;
+  font-weight:800;font-size:13.5px;line-height:1.7;border-radius:0}
+.ob-reward b{color:#0d7a52;font-size:15px}
+#obbar{display:flex;align-items:center;gap:0;flex-wrap:wrap;padding:9px 14px;
+  background:#eda100;border-bottom:3px solid #111;font-weight:800;font-size:12.5px}
+#obbar .ob-t{font-weight:900;letter-spacing:.1em;margin-right:12px}
+#obbar .ob-sep{opacity:.45;margin:0 2px}
+.ob-step{border:2px solid #111;background:#fff;padding:4px 10px;font-weight:800;
+  font-size:12.5px;cursor:pointer;font-family:inherit}
+.ob-step.cur{background:#111;color:#f4f1ea}
+.ob-step.ok{background:#1baf7a;color:#fff}
+.ob-skip{margin-left:auto;font-weight:800;color:#111;opacity:.7;font-size:12px}
+.ob-hint{border:3px solid #111;background:#fffbe9;box-shadow:5px 5px 0 #eda100;
+  padding:13px 16px;margin:0 0 16px}
+.ob-hint .ob-hd{font-weight:900;font-size:15px;margin-bottom:4px}
+.ob-hint .ob-why{font-weight:700;font-size:13.5px}
+.ob-hint .ob-get{font-weight:700;font-size:13px;margin-top:5px}
+.ob-hint .ob-warn{border:2px dashed #e34948;padding:7px 10px;margin-top:8px;
+  font-weight:800;font-size:12.5px}
+.ob-hint .ob-nx{font-size:11.5px;font-weight:700;opacity:.6;margin-top:7px}
+"""
+
+
 def welcome_page():
     """空数据时的上手页:一片空白的面板毫无意义,给两条明确的路。"""
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
@@ -1368,11 +1795,18 @@ def welcome_page():
 </body></html>"""
 
 
-def shell(default="origin", skin=""):
+def shell(default="origin", skin="", ob=None, ob_skipped=False):
     """外壳页：顶部标签栏 + iframe。持仓全景 / 现金流编辑 一页切换。
-    skin='poster' 时壳页换新粗野主义外观(选中「色块海报」主题即全面板跟随)。"""
+    skin='poster' 时壳页换新粗野主义外观(选中「色块海报」主题即全面板跟随)。
+    ob: onboard_state() —— 引导中会多一条进度条;第①步没填完时全景 Tab 预览 demo。"""
     if default not in THEMES:
         default = next(iter(THEMES))
+    ob = ob or onboard_state()
+    show_ob = not ob_skipped and not ob["all_done"]
+    preview = not ob["done"].get("acct")      # 还没填账户 → 全景位先给 demo 看(可点可下钻)
+    ob_bar = onboard_bar(ob, ob_skipped)
+    first_tab = next((s["tab"] for s in ONBOARD_STEPS if s["k"] == ob["cur"]), "view") \
+        if show_ob else "view"
     opts = "".join(f'<option value="{k}"{" selected" if k==default else ""}>{name}</option>'
                    for k, (name, _) in THEMES.items())
     # 只有一个主题时不显示下拉
@@ -1399,11 +1833,23 @@ def shell(default="origin", skin=""):
  .skin-poster select{{border:2px solid #111;border-radius:0;font-weight:800;background:#f4f1ea}}
  .skin-poster #rebuild{{background:#2a78d6;border:2px solid #f4f1ea;border-radius:0;font-weight:800}}
  .skin-poster iframe{{background:#f4f1ea}}
+ /* 演示预览:整页轻微降饱和 + 甩不掉的角标,时刻提醒「这是样板间,不是你家」 */
+ #wrap{{position:relative}}
+ #wrap.preview iframe{{filter:saturate(.55) opacity(.92)}}
+ #pvtag{{display:none;position:absolute;right:18px;top:16px;z-index:20;background:#111;color:#f4f1ea;
+   border:3px solid #eda100;padding:10px 14px;font-weight:900;font-size:13px;line-height:1.5;
+   box-shadow:5px 5px 0 rgba(0,0,0,.35);max-width:260px}}
+ #wrap.preview #pvtag{{display:block}}
+ #pvtag b{{color:#eda100}}
+ #pvtag button{{margin-top:8px;width:100%;border:2px solid #eda100;background:#eda100;color:#111;
+   font-weight:900;padding:6px;cursor:pointer;font-family:inherit;font-size:12.5px}}
+ {OB_CSS}
 </style></head><body class="{skin_cls}">
 <nav>
- <button class="tab active" data-tab="view">📊 持仓全景</button>
+ <button class="tab active" data-tab="view">📊 持仓全景{'（预览样板）' if preview else ''}</button>
  <button class="tab" data-tab="hold">📦 持仓管理</button>
  <button class="tab" data-tab="edit">💰 现金流编辑</button>
+ <button class="tab" data-tab="goal">🎯 目标与大事</button>
  <button class="tab" data-tab="subs">📆 订阅管理</button>
  <button class="tab" data-tab="recon">🧾 月度对账</button>
  <button class="tab" data-tab="ins">🛡️ 保险</button>
@@ -1413,22 +1859,35 @@ def shell(default="origin", skin=""):
   <button id="rebuild" title="拉最新行情重算并刷新全景">↻ 重新估值</button>
  </div>
 </nav>
-<iframe id="frame" src="/panorama?theme={default}"></iframe>
+{ob_bar}
+<div id="wrap" class="{'preview' if preview else ''}">
+  <div id="pvtag">🎭 <b>预览样板间</b><br>这是虚构人物「张小满」一家的数据,<b>不是你的</b>。<br>
+    可以随便点、下钻、看每张卡。<button id="pvgo">开始填我的数据 →</button></div>
+  <iframe id="frame" src="{'/demo-panorama' if preview else '/panorama?theme=' + default}"></iframe>
+</div>
 <script>
  const frame=document.getElementById('frame'), themeSel=document.getElementById('theme'), DEF='{default}';
- let tab='view';
+ const WRAP=document.getElementById('wrap'), PREVIEW={'true' if preview else 'false'};
+ let tab='{first_tab}';
  function theme(){{ return themeSel ? themeSel.value : DEF; }}
- function srcFor(){{ return tab==='view' ? '/panorama?theme='+theme()+'&_='+Date.now()
+ function srcFor(){{ return tab==='view' ? (PREVIEW ? '/demo-panorama?_='+Date.now()
+                                                    : '/panorama?theme='+theme()+'&_='+Date.now())
                                           : tab==='subs' ? '/subs?_='+Date.now()
                                           : tab==='recon' ? '/recon?_='+Date.now()
                                           : tab==='ins' ? '/insurance?_='+Date.now()
                                           : tab==='loans' ? '/loans?_='+Date.now()
+                                          : tab==='goal' ? '/goal?_='+Date.now()
                                           : tab==='hold' ? '/holdings?_='+Date.now()
                                           : '/edit?_='+Date.now(); }}
  function show(t){{ tab=t;
    document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+   WRAP.classList.toggle('preview', PREVIEW && t==='view');   // 角标只在预览全景时出现
    frame.src=srcFor(); }}
  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+ document.querySelectorAll('.ob-step').forEach(b=>b.onclick=()=>show(b.dataset.tab));
+ const pvgo=document.getElementById('pvgo');
+ if(pvgo) pvgo.onclick=()=>show('hold');     // 「开始填我的数据」→ 第①步(账户)
+ show(tab);
  // 主题即全面板皮肤:写 cookie 让所有管理页/壳页跟随(暂只有海报有皮肤)
  if(themeSel) themeSel.onchange=()=>{{
    const poster = themeSel.value==='poster';
@@ -1476,11 +1935,28 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path)
         path, q = route.path, parse_qs(route.query)
         if path in ("/", "/index.html"):
-            if not _has_data():          # 新用户:一片空白的面板毫无意义,先给一张上手页
-                self._send(welcome_page())
-                return
             skin = self._skin()
-            self._send(shell(default="poster" if skin == "poster" else "origin", skin=skin))
+            skipped = "ob_skip=1" in (self.headers.get("Cookie") or "")
+            self._send(shell(default="poster" if skin == "poster" else "origin", skin=skin,
+                             ob=onboard_state(), ob_skipped=skipped))
+        elif path == "/skip-onboard":
+            self.send_response(302)
+            self.send_header("Set-Cookie", "ob_skip=1;path=/;max-age=31536000")
+            self.send_header("Location", "/")
+            self.end_headers()
+        elif path == "/demo-panorama":
+            # 引导期的样板间:渲染演示数据的海报页(缺就现渲一次),整页可点可下钻
+            fp = BASE / "demo" / "panorama_poster.html"
+            if not fp.exists():
+                import os
+                subprocess.run([sys.executable, str(BASE / "rebuild_views.py")], cwd=BASE,
+                               env={**os.environ, "PANORAMA_DEMO": "1"},
+                               capture_output=True, timeout=180)
+            self._send(fp.read_bytes() if fp.exists()
+                       else b'<body style="font-family:sans-serif;padding:40px">'
+                            b'\xe6\xbc\x94\xe7\xa4\xba\xe9\xa1\xb5\xe7\x94\x9f\xe6\x88\x90\xe4\xb8\xad\xe2\x80\xa6</body>')
+        elif path == "/goal":
+            self._send(goal_page())
         elif path == "/edit":
             self._send(page(load_cf()))
         elif path == "/subs":
@@ -1515,7 +1991,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
-        if route == "/save":
+        if route == "/save-goal":
+            length = int(self.headers.get("Content-Length", 0))
+            fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
+            storage.save_doc("goal", parse_goal(fields))
+            msg = "✅ 已保存目标与重大事件"
+            rebuilt = fields.get("act", [""])[0] == "save_rebuild"
+            if rebuilt:
+                ok = self._rebuild_views()
+                msg += " · 已刷新全景，正在跳转…" if ok else " · ⚠️ 刷新失败，仅保存成功"
+                rebuilt = ok
+            self._send(goal_page(msg, rebuilt=rebuilt, reward=onboard_reward("goal")))
+        elif route == "/save":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
             cf = parse_save(fields)
@@ -1526,7 +2013,7 @@ class Handler(BaseHTTPRequestHandler):
                 ok = self._rebuild_views()
                 msg += " · 已刷新全景(行情走当日缓存)，正在跳转…" if ok else " · ⚠️ 刷新失败(行情/网络)，仅保存成功"
                 rebuilt = ok
-            self._send(page(cf, msg, rebuilt=rebuilt))
+            self._send(page(cf, msg, rebuilt=rebuilt, reward=onboard_reward("flow")))
         elif route == "/subs/save":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
@@ -1580,11 +2067,16 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/holdings/save":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
+            _st_before = onboard_state()      # 保存前的状态:决定这次算完成了哪一步
             rows, prices, manual_updates, acct_new, note = parse_holdings_save(fields)
             records, warns = hold_mod.save_holdings(rows, prices, note)
             changed = hold_mod.save_manual(manual_updates)
             added = hold_mod.add_account(*acct_new) if acct_new[0].strip() else False
             msg = "✅ 已保存持仓管理（上一版已自动备份）"
+            # 这一页同时承载第①步(账户)与第③步(持仓):按**用户这次提交了什么**判定,
+            # 而不是按状态——否则「已有账户后再加一个账户」会被误报成第③步
+            _step = "hold" if rows else "acct"
+            reward = "" if _st_before["all_done"] else onboard_reward(_step)
             if records:
                 brief = "、".join(f'{r["动作"]} {r["名称"]} {r["数量"]}@{r["成交价"] or "?"}'
                                   for r in records[:4])
@@ -1600,7 +2092,7 @@ class Handler(BaseHTTPRequestHandler):
                 ok = self._rebuild_views()
                 msg += " · 已刷新全景(行情走当日缓存)，正在跳转…" if ok else " · ⚠️ 刷新失败，仅保存成功"
                 rebuilt = ok
-            self._send(holdings_page(msg, rebuilt=rebuilt))
+            self._send(holdings_page(msg, rebuilt=rebuilt, reward=reward))
         elif route == "/recon/import":
             length = int(self.headers.get("Content-Length", 0))
             try:

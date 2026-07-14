@@ -9,6 +9,7 @@
 
 不覆盖已有数据：任何已存在的文件都会跳过并提示。
 """
+import json
 import shutil
 import subprocess
 import sys
@@ -17,19 +18,35 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 DEMO = BASE / "demo"
 
-# (文件, 是否必需, 一句话说明)
+# (文件, 是否必需, 来源, 一句话说明)
+#   来源 "demo" = 拷贝演示数据当填写参照(你会照着改,数字是别人的没关系)
+#   来源 "empty" = 给**空模板**。台账类(负债/保险/订阅/持仓)绝不能带别人的余额进来——
+#   否则「只填了资产、还没填负债」的中间状态会算出别人的房贷 → 负净资产(旧 *.example 的老毛病)
 FILES = [
-    ("holdings.csv", True, "可实时报价的证券(股票/ETF)——没有就留空表头"),
-    ("accounts.csv", True, "没有行情的账户:理财/存款/保险/房产/日常现金"),
-    ("manual_values.json", True, "上面这些账户的最新金额(房产建议标 kind=anchor 季度重估)"),
-    ("cashflow.json", True, "收入与月度支出。⚠ 日常生活开销一定要记进来,否则储蓄率虚高"),
-    ("passthrough.json", False, "投顾组合的穿透权重(没有投顾组合可跳过)"),
-    ("goal.json", False, "目标态与重大事件(换房/还清贷款/子女教育…)——面板的导航中心"),
-    ("subscriptions.json", False, "订阅台账"),
-    ("insurance.json", False, "保单台账"),
-    ("loans.json", False, "贷款台账(余额自动按月推演)"),
-    ("insurance_cashvalue.csv", False, "增额寿现金价值表(有储蓄险才需要)"),
+    ("holdings.csv", True, "empty", "可实时报价的证券(股票/ETF)——没有就留着空表头"),
+    ("accounts.csv", True, "demo", "没有行情的账户:理财/存款/保险/房产/日常现金"),
+    ("manual_values.json", True, "demo", "上面这些账户的最新金额(房产建议标 kind=anchor 季度重估)"),
+    ("cashflow.json", True, "demo", "收入与月度支出。⚠ 日常生活开销一定要记进来,否则储蓄率虚高"),
+    ("passthrough.json", False, "demo", "投顾组合的穿透权重(没有投顾组合可跳过)"),
+    ("goal.json", False, "demo", "目标态与重大事件(换房/还清贷款/子女教育…)——面板的导航中心"),
+    ("subscriptions.json", False, "empty", "订阅台账"),
+    ("insurance.json", False, "empty", "保单台账"),
+    ("loans.json", False, "empty", "贷款台账(余额自动按月推演)"),
+    ("insurance_cashvalue.csv", False, "empty", "增额寿现金价值表(有储蓄险才需要)"),
 ]
+
+# 空模板:结构齐全但没有任何余额/条目 —— 参照请看 demo/ 里的同名文件
+EMPTY = {
+    "holdings.csv": ("名称,代码,市场,资产类型,账户,持有数量,新浪查询代码,腾讯查询代码,"
+                     "东财secid,流动性,股息率\n"),
+    "insurance_cashvalue.csv": "保单年度,现金价值,账户\n",
+    "subscriptions.json": {"_note": "订阅台账。参照 demo/subscriptions.json", "订阅": []},
+    "insurance.json": {"_note": "保单台账。参照 demo/insurance.json", "保单": [],
+                       "_note2": "储蓄型起保日:账户名 → 起保日(有增额寿/终身寿才填)",
+                       "储蓄型起保日": {}},
+    "loans.json": {"_note": "负债台账。余额由 基准本金+利率+月供 按月推演。"
+                            "参照 demo/loans.json", "负债": []},
+}
 
 
 def _run(cmd, env=None):
@@ -51,18 +68,27 @@ def try_demo():
 
 
 def init_mine():
-    print("\n📋 从演示配置起步——它就是最好的填写参照(字段该填什么样,照着改)。\n")
+    print("\n📋 必填项从演示配置起步(照着改);台账类给空模板——")
+    print("   不能把别人的房贷/保单带进你的账本,否则「填了资产还没填负债」会算出负净资产。\n")
     created, skipped = [], []
-    for name, required, desc in FILES:
-        dst, src = BASE / name, DEMO / name
+    for name, required, source, desc in FILES:
+        dst = BASE / name
         if dst.exists():
             skipped.append(name); continue
-        if not src.exists():
-            continue
-        shutil.copy(src, dst)
-        created.append((name, required, desc))
-    for name, required, desc in created:
-        print(f"  ✅ {name:26} {'[必填]' if required else '[可选]'} {desc}")
+        if source == "empty" and name in EMPTY:
+            body = EMPTY[name]
+            dst.write_text(body if isinstance(body, str)
+                           else json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+        else:
+            src = DEMO / name
+            if not src.exists():
+                continue
+            shutil.copy(src, dst)
+        created.append((name, required, source, desc))
+    for name, required, source, desc in created:
+        tag = "[必填]" if required else "[可选]"
+        origin = "参照演示" if source == "demo" else "空模板"
+        print(f"  ✅ {name:26} {tag} {origin:5} {desc}")
     if skipped:
         print(f"\n  ⏭️  已存在,未覆盖:{', '.join(skipped)}")
     if not created:
