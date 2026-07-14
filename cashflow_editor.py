@@ -874,6 +874,17 @@ def insurance_page(policies, msg="", rebuilt=False, reward=""):
  .ok{{background:#e7f7ec;color:#1a7f37;padding:10px 14px;border-radius:10px;margin-bottom:16px}}
  .hint{{font-size:12px;color:#999}}
  @media(max-width:760px){{.pgrid{{grid-template-columns:repeat(2,1fr)}}}}
+ /* ── 手机(≤480px):一律单列,不留横向溢出 ── */
+ @media(max-width:480px){{
+  body{{padding:12px}}
+  .pgrid,.g3,.g4,.mrow,.kpis{{grid-template-columns:1fr !important;gap:6px}}
+  .card{{padding:14px 13px;border-radius:12px}}
+  h1{{font-size:18px}}
+  input,select,button{{font-size:16px}}   /* iOS ≥16px 才不会自动放大页面 */
+  .btns{{flex-direction:column}}
+  table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+ }}
+
 </style></head><body><div class="wrap">
 <h1>🛡️ 保险台账</h1>
 <div class="sub">保障型保单录入 · 年缴保费自动摊月计入固定支出 · 缴费日前 30/7/1 天面板提醒<br>
@@ -983,6 +994,17 @@ GOAL_CSS = """
  .hint{font-size:12px;color:#999}
  .tip{background:#fffbe9;border:1px solid #f0dc9a;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:12px;line-height:1.7}
  @media(max-width:760px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+ /* ── 手机(≤480px):一律单列,不留横向溢出 ── */
+ @media(max-width:480px){
+  body{padding:12px}
+  .pgrid,.g3,.g4,.mrow,.kpis{grid-template-columns:1fr !important;gap:6px}
+  .card{padding:14px 13px;border-radius:12px}
+  h1{font-size:18px}
+  input,select,button{font-size:16px}   /* iOS ≥16px 才不会自动放大页面 */
+  .btns{flex-direction:column}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+ }
+
 """
 
 
@@ -1250,6 +1272,17 @@ def loans_page(items, msg="", rebuilt=False, reward=""):
  table.tt{{border-collapse:collapse;margin-top:8px;font-size:13px}}
  table.tt td,table.tt th{{border:1px solid #eee;padding:5px 14px;text-align:right}}
  @media(max-width:760px){{.pgrid{{grid-template-columns:repeat(2,1fr)}}}}
+ /* ── 手机(≤480px):一律单列,不留横向溢出 ── */
+ @media(max-width:480px){{
+  body{{padding:12px}}
+  .pgrid,.g3,.g4,.mrow,.kpis{{grid-template-columns:1fr !important;gap:6px}}
+  .card{{padding:14px 13px;border-radius:12px}}
+  h1{{font-size:18px}}
+  input,select,button{{font-size:16px}}   /* iOS ≥16px 才不会自动放大页面 */
+  .btns{{flex-direction:column}}
+  table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+ }}
+
 </style></head><body><div class="wrap">
 <h1>💳 负债台账</h1>
 <div class="sub">余额按「基准年月+基准本金+利率+月供」自动按月推演，无需手动更新 ·
@@ -1442,6 +1475,17 @@ def holdings_page(msg="", rebuilt=False, reward=""):
         padding:7px 0;border-bottom:1px solid #f0f0f0}}
  .ro{{background:#f4f5f7;color:#555;border-color:#eee}}
  @media(max-width:760px){{.pgrid{{grid-template-columns:repeat(2,1fr)}}.mrow{{grid-template-columns:1fr 1fr}}}}
+ /* ── 手机(≤480px):一律单列,不留横向溢出 ── */
+ @media(max-width:480px){{
+  body{{padding:12px}}
+  .pgrid,.g3,.g4,.mrow,.kpis{{grid-template-columns:1fr !important;gap:6px}}
+  .card{{padding:14px 13px;border-radius:12px}}
+  h1{{font-size:18px}}
+  input,select,button{{font-size:16px}}   /* iOS ≥16px 才不会自动放大页面 */
+  .btns{{flex-direction:column}}
+  table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+ }}
+
 {OB_CSS}
 </style></head><body><div class="wrap">
 {onboard_hint(onboard_state()["cur"] if onboard_state()["cur"] in ("acct","hold") else "", onboard_state())}
@@ -1833,9 +1877,9 @@ def shell(default="origin", skin="", ob=None, ob_skipped=False):
  .skin-poster select{{border:2px solid #111;border-radius:0;font-weight:800;background:#f4f1ea}}
  .skin-poster #rebuild{{background:#2a78d6;border:2px solid #f4f1ea;border-radius:0;font-weight:800}}
  .skin-poster iframe{{background:#f4f1ea}}
- /* 演示预览:整页轻微降饱和 + 甩不掉的角标,时刻提醒「这是样板间,不是你家」 */
+ /* 演示预览:页面保持原色(降饱和会毁掉配色,而配色正是要展示的东西),
+    只靠角标提醒「这是样板间,不是你家」 */
  #wrap{{position:relative}}
- #wrap.preview iframe{{filter:saturate(.55) opacity(.92)}}
  #pvtag{{display:none;position:absolute;right:18px;top:16px;z-index:20;background:#111;color:#f4f1ea;
    border:3px solid #eda100;padding:10px 14px;font-weight:900;font-size:13px;line-height:1.5;
    box-shadow:5px 5px 0 rgba(0,0,0,.35);max-width:260px}}
@@ -1844,6 +1888,17 @@ def shell(default="origin", skin="", ob=None, ob_skipped=False):
  #pvtag button{{margin-top:8px;width:100%;border:2px solid #eda100;background:#eda100;color:#111;
    font-weight:900;padding:6px;cursor:pointer;font-family:inherit;font-size:12.5px}}
  {OB_CSS}
+ /* 手机:角标压在右上角会挡住卡片 → 改为贴底通栏,不遮内容 */
+ @media(max-width:720px){{
+   nav{{gap:6px;padding:6px 10px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}}
+   .tab{{font-size:13px;padding:7px 10px;white-space:nowrap;flex:none}}
+   .right{{position:sticky;right:0;background:inherit}}
+   #pvtag{{position:fixed;left:8px;right:8px;top:auto;bottom:8px;max-width:none;
+     font-size:12.5px}}
+   #obbar{{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}}
+   .ob-step{{white-space:nowrap;flex:none}}
+   .ob-skip{{position:sticky;right:0;background:#eda100;padding-left:8px}}
+ }}
 </style></head><body class="{skin_cls}">
 <nav>
  <button class="tab active" data-tab="view">📊 持仓全景{'（预览样板）' if preview else ''}</button>
