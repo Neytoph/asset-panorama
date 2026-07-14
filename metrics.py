@@ -152,35 +152,65 @@ def attribution(history_rows, cashflow_rows):
 
 # ── 财务自由推演 ───────────────────────────────────────────────────
 
-def fi_plan(financial, fixed_out, monthly_saving, cfg=None):
-    """FI 线 = 年固定支出/提取率；三情景(实际回报,已扣通胀)到达年限。
-    月储蓄取当前净结余(≤0 按 0，只靠存量复利)。"""
+def _years_to(target, start, monthly_saving, r):
+    """在实际回报 r 下，从 start 每月存 monthly_saving 攒到 target 需要几年。"""
+    if start >= target:
+        return 0.0
+    s = max(0.0, monthly_saving)
+    rm = (1 + r) ** (1 / 12.0) - 1
+    if rm <= 0:
+        return (target - start) / s / 12 if s > 0 else None
+    if s > 0:
+        return math.log((target * rm + s) / (start * rm + s)) / math.log(1 + rm) / 12
+    if start > 0:
+        return math.log(target / start) / math.log(1 + rm) / 12
+    return None
+
+
+def lifelong_out(flow_items, subs_monthly=0.0, ins_monthly=0.0):
+    """终身支出(月) = 月度收支里「终身」!=False 的项 + 订阅 + 保险摊月。
+    有终点的支出(房贷/幼儿园/车贷)不抬高 FI 终点，但仍在路径上拖慢攒钱速度。
+    返回 (终身月支出, [有终点的项 {项目,金额}])。"""
+    lifelong, ending = 0.0, []
+    for it in flow_items or []:
+        amt = abs(it.get("金额") or 0)
+        if it.get("终身") is False:
+            ending.append({"item": it.get("项目", ""), "amt": round(amt)})
+        else:
+            lifelong += amt
+    return lifelong + (subs_monthly or 0) + (ins_monthly or 0), ending
+
+
+def fi_plan(financial, fixed_out, monthly_saving, cfg=None,
+            lifelong_month=None, ending_items=None, jump=None):
+    """FI 线 = **终身**月支出×12 / 提取率(不含房贷/幼儿园这类有终点的支出，见 docs/2029-plan.md 2.4)。
+    monthly_saving 走路径口径(收入 − **全部**支出，不假装现在不用交学费)。
+    jump: 一次性资金跃迁(如换房净释放)，给出「跃迁后」的双轨进度。"""
     cfg = cfg or {}
     swr = cfg.get("提取率", 0.035)
     scenarios = cfg.get("实际回报情景", [0.02, 0.04, 0.06])
-    annual_out = fixed_out * 12
+    base_month = lifelong_month if lifelong_month is not None else fixed_out
+    annual_out = base_month * 12
     if annual_out <= 0 or swr <= 0:
         return None
     number = annual_out / swr
     s = max(0.0, monthly_saving)
-    years = []
-    for r in scenarios:
-        if financial >= number:
-            years.append({"r": r, "years": 0.0})
-            continue
-        rm = (1 + r) ** (1 / 12.0) - 1
-        if rm <= 0:
-            y = (number - financial) / s / 12 if s > 0 else None
-        elif s > 0:
-            y = math.log((number * rm + s) / (financial * rm + s)) / math.log(1 + rm) / 12
-        elif financial > 0:
-            y = math.log(number / financial) / math.log(1 + rm) / 12
-        else:
-            y = None
-        years.append({"r": r, "years": round(y, 1) if y is not None else None})
-    return {"number": round(number), "swr": swr,
-            "progress": financial / number, "annualOut": round(annual_out),
-            "monthlySaving": round(s), "scenarios": years}
+    years = [{"r": r, "years": (lambda y: round(y, 1) if y is not None else None)(
+        _years_to(number, financial, s, r))} for r in scenarios]
+    out = {"number": round(number), "swr": swr,
+           "progress": financial / number, "annualOut": round(annual_out),
+           "monthlySaving": round(s), "scenarios": years,
+           "lifelongMonth": round(base_month),
+           "endingItems": ending_items or [],
+           "endingMonth": round(sum(x["amt"] for x in (ending_items or [])))}
+    if jump:                       # 换房一跃:释放的钱直接进金融资产
+        after = financial + jump
+        out["jump"] = {
+            "amount": round(jump),
+            "progressAfter": after / number,
+            "scenarios": [{"r": r, "years": (lambda y: round(y, 1) if y is not None else None)(
+                _years_to(number, after, s, r))} for r in scenarios]}
+    return out
 
 
 # ── 再平衡执行单 ───────────────────────────────────────────────────
@@ -288,11 +318,145 @@ def sbbi_replay(classes, data):
             "best": sorted(per, key=lambda x: -x["r"])[:3]}
 
 
+# ── 换房路线图(2029 目标态的核心动作) ─────────────────────────────
+
+def relocation_plan(goal, classes, networth, prop_gross, total_debt, liquid, today=None):
+    """卖掉现有投资房 → 买一套学位房 → 净释放的钱进入金融资产。
+    预算上限由目标态「房产 ≤X%」反推(取占比上限与封顶的较小值)。
+    过桥资金 = 卖房款到账前必须先付出去的钱 —— 2.5 年内要用，不该在权益里。
+    返回 None 表示未启用。"""
+    g = (goal or {}).get("换房") or {}
+    if not g.get("启用") or not networth:
+        return None
+    today = today or datetime.date.today()
+
+    def d(key):
+        try:
+            return datetime.date.fromisoformat(str(g.get(key)))
+        except (ValueError, TypeError):
+            return None
+    target_d, start_by = d("目标日"), d("启动截止")
+    months_left = ((target_d.year - today.year) * 12 + target_d.month - today.month) if target_d else None
+    start_months = ((start_by.year - today.year) * 12 + start_by.month - today.month) if start_by else None
+
+    sell = prop_gross                                   # 卖出价 = 房产锚定值
+    cost = sell * (g.get("交易成本率") or 0)             # 中介/税费
+    payoff = total_debt                                 # 结清房贷(负债台账口径)
+    # 预算上限:换房后房产不超过目标态占比 → 以「换房后净资产」为基数反推
+    cap_pct = g.get("买入预算上限占比") or 0.20
+    nw_after_costs = networth - cost
+    by_pct = nw_after_costs * cap_pct / (1 - 0) if cap_pct else 0
+    budget = min(by_pct, g.get("买入预算封顶") or by_pct)
+    released = sell - cost - payoff - budget            # 净释放进金融资产
+    bridge_need = g.get("过桥需自筹") or 0
+    bridge_gap = max(0.0, bridge_need - liquid)         # 可变现资产盖不住的部分
+
+    prop_after = budget
+    nw_after = networth - cost                          # 卖房本身不改变净资产(除税费)
+    return {
+        "targetDate": g.get("目标日"), "why": g.get("说明", ""),
+        "startBy": g.get("启动截止"), "monthsLeft": months_left,
+        "startMonthsLeft": start_months,
+        "sell": round(sell), "cost": round(cost), "payoff": round(payoff),
+        "budget": round(budget), "budgetPct": cap_pct,
+        "capped": bool(g.get("买入预算封顶") and g["买入预算封顶"] < by_pct),
+        "released": round(released),
+        "bridgeNeed": round(bridge_need), "bridgeGap": round(bridge_gap),
+        "propPctNow": prop_gross / networth if networth else 0,
+        "propPctAfter": prop_after / nw_after if nw_after else 0,
+        "finAfter": round(classes.get("权益", 0) + classes.get("债券类固收", 0)
+                          + classes.get("现金", 0) + classes.get("黄金", 0) + released),
+    }
+
+
+def pnl_series_from(history_full_rows, ledger_rows, fx):
+    """逐日累计浮盈 [(date, pnl)]：每日持仓市值(history_full 的「持仓」行) − 截至当日的净投入(台账)。
+    **只覆盖可定价持仓**；长钱/海外长钱这类手动账户的收益无法从余额里分离
+    (更新余额时「市场涨了」和「我又转进去了」混在一起)——要精确倒推储蓄，
+    需要额外记录「向投顾账户的转入」。见 docs/2029-plan.md 2.2 的限制说明。"""
+    by_day = defaultdict(float)
+    for r in history_full_rows or []:
+        if r.get("类型") != "持仓":
+            continue
+        try:
+            by_day[r["date"][:10]] += float(r.get("金额") or 0)
+        except (ValueError, KeyError):
+            continue
+    flows = []      # (date, 净投入增量)
+    for r in ledger_rows or []:
+        try:
+            v = float((r.get("成交额") or "").strip())
+        except ValueError:
+            continue
+        d = (r.get("日期") or "").strip()
+        if not d:
+            continue
+        rate = (fx or {}).get((r.get("成交币种") or "").strip() or "CNY", 1.0)
+        sign = -1.0 if r.get("动作") == "卖出" else 1.0
+        flows.append((d[:10], sign * v * rate))
+    out = []
+    for d in sorted(by_day):
+        cost = sum(v for fd, v in flows if fd <= d)
+        out.append((d, by_day[d] - cost))
+    return out
+
+
+def true_savings(history_rows, cashflow_rows, pnl_series=None, min_days=60):
+    """真实储蓄(总量层) = Δ金融资产 − **期间内**投资收益。
+    储蓄作为残差 —— 它就是「账户里多出来的、不能用市场解释的钱」，自动吸收掉所有
+    未记录的生活开支(见 docs/2029-plan.md 2.2)。与计划口径(净结余)对比，差额=没记的开销。
+
+    pnl_series: [(date, 累计浮盈)] —— 期间投资收益 = 末点累计 − 首点累计。
+      **不能用「台账基线以来的累计浮盈」直接当期间收益**：时间窗对不上，残差会是垃圾。
+    数据不足(跨度 < min_days 或缺 pnl 序列)时返回 {"insufficient": ...}，宁可不给数也不给错数。"""
+    rows = [r for r in history_rows if r.get("date")]
+    if len(rows) < 2:
+        return None
+    d0, d1 = rows[0]["date"][:10], rows[-1]["date"][:10]
+    days = (datetime.date.fromisoformat(d1) - datetime.date.fromisoformat(d0)).days
+
+    def pnl_at(d):
+        best = None
+        for pd_, v in (pnl_series or []):
+            if pd_[:10] <= d:
+                best = v
+        return best
+    p0, p1 = pnl_at(d0), pnl_at(d1)
+    if days < min_days or p0 is None or p1 is None:
+        return {"insufficient": True, "days": days, "needDays": min_days,
+                "why": ("需要至少两个月的净值历史 + 逐日浮盈序列才能把「市场涨跌」和「你存进去的钱」"
+                        "分开；在此之前储蓄率只能用计划口径(会高估)")}
+
+    def num(r, k):
+        try:
+            return float(r.get(k) or 0)
+        except ValueError:
+            return 0.0
+    d_fin = num(rows[-1], "金融资产") - num(rows[0], "金融资产")
+    real = d_fin - (p1 - p0)
+    m0, m1 = d0[:7], d1[:7]
+    planned = 0.0
+    for r in cashflow_rows or []:
+        m = (r.get("月份") or "").strip()
+        if m and m0 <= m <= m1:
+            try:
+                planned += float(r.get("净结余") or 0)
+            except ValueError:
+                pass
+    months = max(1.0, days / 30.44)
+    return {"from": d0, "to": d1, "days": days, "months": round(months, 1),
+            "real": round(real), "planned": round(planned),
+            "investPnl": round(p1 - p0),
+            "unrecorded": round(planned - real),        # 计划 − 真实 = 没记的生活开支
+            "realMonthly": round(real / months)}
+
+
 # ── 压力测试 ───────────────────────────────────────────────────────
 
-def stress_test(classes, prop_gross, total_debt, gross_assets, ccy, networth):
+def stress_test(classes, prop_gross, total_debt, gross_assets, ccy, networth, reloc=None):
     """标准情景冲击：ΔNW、冲击后净资产、冲击后杠杆率(负债/冲击后总资产)。
-    房产按估值(prop_gross)打折——负债不变,这正是杠杆的放大效应。"""
+    房产按估值(prop_gross)打折——负债不变,这正是杠杆的放大效应。
+    reloc: 有换房计划时，房价下跌的真实伤害是「净释放的钱变少」——这才是未来数年的头号风险。"""
     if not networth or not gross_assets:
         return None
     eq = classes.get("权益", 0.0)
@@ -309,6 +473,14 @@ def stress_test(classes, prop_gross, total_debt, gross_assets, ccy, networth):
         out.append({"name": name, "dNW": round(d), "nwAfter": round(networth + d),
                     "levAfter": total_debt / ga if ga > 0 else None,
                     "ddPct": d / networth})
+    if reloc:                      # 换房专属:房价跌 → 净释放缩水(学位房预算也同步走低,部分对冲)
+        for drop in (0.10, 0.20, 0.30):
+            sell = reloc["sell"] * (1 - drop)
+            rel = sell - sell * 0 - reloc["cost"] * (1 - drop) - reloc["payoff"] - reloc["budget"]
+            out.append({"name": f"换房时房价 −{int(drop*100)}%", "reloc": True,
+                        "released": round(rel),
+                        "dReleased": round(rel - reloc["released"]),
+                        "ok": rel > 0})
     return out
 
 

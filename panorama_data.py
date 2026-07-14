@@ -231,15 +231,32 @@ def collect(persist_history=True, fetch_klines=True):
     # 投顾指标：资金加权收益(XIRR)/净资产增长归因/FI 推演/再平衡执行单
     perf = metrics.portfolio_perf(history_rows, holdings, fx)
     perf["byHolding"] = perf["byHolding"][:10]
-    attrib = metrics.attribution(history, read_csv("cashflow_history.csv", []))
-    fi = metrics.fi_plan(fin, fixed_out, net_cf, cf.get("FI", {}))
+    cfh_rows = read_csv("cashflow_history.csv", [])
+    attrib = metrics.attribution(history, cfh_rows)
+
+    # ── 2029 目标态导航(见 docs/2029-plan.md):换房是未来数年量级最大的一次财务动作 ──
+    goal = load_json("goal.json")
+    ins_monthly = ins.monthly_total(ins.load_policies())
+    lifelong_m, ending_items = metrics.lifelong_out(cf.get("月度收支", []), subs_monthly, ins_monthly)
+    reloc = metrics.relocation_plan(goal, classes, nw, prop_gross, total_debt, liquid)
+    fi = metrics.fi_plan(fin, fixed_out, net_cf, goal.get("FI") or cf.get("FI", {}),
+                         lifelong_month=lifelong_m, ending_items=ending_items,
+                         jump=reloc["released"] if reloc else None)
+    # 真实储蓄:投资收益取逐日浮盈序列的**期间增量**(不能用累计浮盈——时间窗对不上,残差会是垃圾),
+    # 储蓄作为残差(自动吸收未记录的生活开支);数据不足时返回 insufficient,宁可不给数也不给错数
+    real_sav = metrics.true_savings(
+        history, cfh_rows,
+        metrics.pnl_series_from(read_csv("history_full.csv", []), history_rows, fx))
     reb = metrics.rebalance_plan(classes, TARGET_NETWORTH, nw, dca_month)
-    stress = metrics.stress_test(classes, prop_gross, total_debt, gross_assets, ccy, nw)
+    stress = metrics.stress_test(classes, prop_gross, total_debt, gross_assets, ccy, nw, reloc)
     policy_loan = 0.8 * sum(a["value"] for a in accounts if a["type"] == "类固收保险")
     # SBBI 序列是仓库静态参考数据,不进 storage——直接读文件
     _sbbi_p = BASE / "sbbi_returns.json"
-    sbbi = metrics.sbbi_replay(
-        classes, json.loads(_sbbi_p.read_text(encoding="utf-8")) if _sbbi_p.exists() else {})
+    _sbbi_data = json.loads(_sbbi_p.read_text(encoding="utf-8")) if _sbbi_p.exists() else {}
+    sbbi = metrics.sbbi_replay(classes, _sbbi_data)
+    # 目标态回放:换房后的权重才是要长期持有的那个组合(当前权重 2.5 年后作废)
+    tgt_cls = ((goal.get("目标态") or {}).get("大类") or {})
+    sbbi_goal = metrics.sbbi_replay({k: v for k, v in tgt_cls.items()}, _sbbi_data) if tgt_cls else None
 
     equity = classes.get("权益", 0)
     concentrated = sum(h["value"] for h in holdings if h["type"] in SINGLE_STOCK_TYPES)
@@ -408,7 +425,11 @@ def collect(persist_history=True, fetch_klines=True):
         "pnlTotal": round(pnl_total),
         "perf": perf, "attribution": attrib, "fi": fi, "rebalance": reb,
         "stress": stress, "insGap": ins_gap, "policyLoan": round(policy_loan),
-        "sbbi": sbbi,
+        "goal": goal, "reloc": reloc, "trueSavings": real_sav,
+        # 近 30 天有没有真的买入过?——用来揭穿「执行单显示在纠偏,实际一笔没投」
+        "buys30d": sum(1 for r in history_rows if r.get("动作") == "买入"
+                       and (r.get("日期") or "") >= (today - datetime.timedelta(days=30)).isoformat()),
+        "sbbi": sbbi, "sbbiGoal": sbbi_goal,
         "alerts": alerts,
         "warnings": R["warnings"],
         "insMonthly": round(ins.monthly_total(policies)),

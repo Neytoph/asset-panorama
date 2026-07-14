@@ -5,6 +5,7 @@
 只用临时文件，不碰真实数据。
 """
 import copy
+import datetime
 import json
 import os
 from pathlib import Path
@@ -442,6 +443,96 @@ def test_insurance_gap():
     assert "孩子" not in ci                                     # 无收入不算重疾收入缺口
 
 
+def test_bill_coverage():
+    """支出去向是对总量的切分:漏导账单只让未归类变大,总量不变。"""
+    from bill_import import coverage
+    c = coverage(22400, 15800)
+    assert c["total"] == 22400 and c["classified"] == 15800
+    assert c["unclassified"] == 6600
+    assert abs(c["rate"] - 15800 / 22400) < 1e-9
+    zero = coverage(22400, 0)                 # 一条没导 → 归类率 0,但总量照旧
+    assert zero["total"] == 22400 and zero["unclassified"] == 22400
+    over = coverage(10000, 12000)             # 导入超过总量 → 截断,不产生负的未归类
+    assert over["classified"] == 10000 and over["unclassified"] == 0
+
+
+def test_lifelong_out():
+    """终身支出口径:有终点的项(房贷/幼儿园)不进 FI 线分母,但被单列出来。"""
+    from metrics import lifelong_out
+    items = [{"项目": "房租", "金额": -19500, "终身": True},
+             {"项目": "房贷月供", "金额": -4800, "终身": False},
+             {"项目": "幼儿园", "金额": -10000, "终身": False},
+             {"项目": "话费", "金额": -206}]              # 缺字段 → 默认终身
+    m, ending = lifelong_out(items, subs_monthly=635, ins_monthly=4077)
+    assert m == 19500 + 206 + 635 + 4077
+    assert {e["item"] for e in ending} == {"房贷月供", "幼儿园"}
+    assert sum(e["amt"] for e in ending) == 14800
+
+
+def test_fi_plan_lifelong_and_jump():
+    """FI 线用终身口径(显著低于全额口径);jump=换房净释放 → 双轨进度。"""
+    from metrics import fi_plan
+    full = fi_plan(4_000_000, 41_839, 32_732, {"提取率": 0.035, "实际回报情景": [0.04]})
+    life = fi_plan(4_000_000, 41_839, 32_732, {"提取率": 0.035, "实际回报情景": [0.04]},
+                   lifelong_month=25_656, ending_items=[{"item": "房贷", "amt": 4800}],
+                   jump=2_700_000)
+    assert life["number"] < full["number"]                  # 终身口径的 FI 线更低
+    assert life["number"] == round(25_656 * 12 / 0.035)
+    assert life["progress"] > full["progress"]              # 进度因此更高
+    assert life["endingMonth"] == 4800
+    assert life["jump"]["progressAfter"] > life["progress"] # 换房一跃
+    assert life["jump"]["scenarios"][0]["years"] < life["scenarios"][0]["years"]
+
+
+def test_relocation_plan():
+    """换房路线图:预算上限由目标态房产占比反推;净释放 = 卖出 − 税费 − 结清房贷 − 学位房。"""
+    from metrics import relocation_plan
+    goal = {"换房": {"启用": True, "目标日": "2029-09-01", "启动截止": "2028-12-31",
+                     "买入预算上限占比": 0.20, "交易成本率": 0.02, "过桥需自筹": 300_000}}
+    r = relocation_plan(goal, {"权益": 2_000_000}, networth=8_600_000,
+                        prop_gross=5_600_000, total_debt=1_077_000, liquid=2_500_000,
+                        today=datetime.date(2026, 7, 14))
+    assert r["monthsLeft"] == 38
+    assert r["cost"] == 112_000
+    assert abs(r["budget"] - (8_600_000 - 112_000) * 0.20) < 1
+    assert r["released"] == round(5_600_000 - 112_000 - 1_077_000 - r["budget"])
+    assert r["released"] > 2_000_000                        # 净释放量级远超日常定投
+    assert abs(r["propPctAfter"] - 0.20) < 0.001            # 换房后房产回到目标上限
+    assert r["bridgeGap"] == 0                              # 可变现资产盖得住过桥
+    assert relocation_plan({}, {}, 1, 1, 0, 0) is None      # 未启用
+
+
+def test_true_savings_guard():
+    """真实储蓄:数据不足时明确返回 insufficient(宁可不给数也不给错数);够了才倒推。"""
+    from metrics import true_savings
+    hist = [{"date": "2026-01-01", "金融资产": "3000000"},
+            {"date": "2026-04-01", "金融资产": "3300000"}]   # 90天,Δ金融 +30万
+    cfh = [{"月份": "2026-02", "净结余": "30000"}, {"月份": "2026-03", "净结余": "30000"}]
+    short = true_savings(hist[:1] + [{"date": "2026-01-20", "金融资产": "3100000"}], cfh, [])
+    assert short["insufficient"] and short["days"] < 60
+    # 期间投资收益 +10万 → 真实储蓄 = 30万 − 10万 = 20万;计划 6万 → 说明另有 14万 净流入未记
+    pnl = [("2026-01-01", 50_000), ("2026-04-01", 150_000)]
+    ts = true_savings(hist, cfh, pnl)
+    assert ts["investPnl"] == 100_000
+    assert ts["real"] == 200_000
+    assert ts["planned"] == 60_000
+    assert ts["unrecorded"] == -140_000     # 计划 − 真实 < 0:实际存下的比计划多
+
+
+def test_stress_relocation():
+    """压测新增换房情景:房价下跌真正伤的是「净释放缩水」。"""
+    from metrics import stress_test
+    reloc = {"sell": 5_600_000, "cost": 112_000, "payoff": 1_077_000,
+             "budget": 1_700_000, "released": 2_711_000}
+    out = stress_test({"权益": 2_000_000}, 5_600_000, 1_077_000, 9_700_000,
+                      {"USD": 500_000}, 8_600_000, reloc)
+    rel = [x for x in out if x.get("reloc")]
+    assert len(rel) == 3
+    d20 = next(x for x in rel if "−20%" in x["name"])
+    assert d20["dReleased"] < 0 and d20["ok"]      # 缩水但计划仍成立
+    assert d20["released"] < reloc["released"]
+
+
 def test_ips_check():
     """IPS 审计:无原因=违纪;卖低配/买超配按交易日权重判;大额提示;期初豁免。"""
     from metrics import ips_check
@@ -533,4 +624,10 @@ if __name__ == "__main__":
     check("SBBI 数据转录校验", test_sbbi_transcription)
     check("SBBI 组合回放", test_sbbi_replay)
     check("IPS 操作合规审计", test_ips_check)
+    check("支出去向=对总量的切分", test_bill_coverage)
+    check("终身支出口径(FI 分母)", test_lifelong_out)
+    check("FI 双轨:终身口径 + 换房一跃", test_fi_plan_lifelong_and_jump)
+    check("换房路线图(预算反推/净释放)", test_relocation_plan)
+    check("真实储蓄倒推与数据不足守卫", test_true_savings_guard)
+    check("压测:换房房价情景", test_stress_relocation)
     print(f"全部 {len(PASS)} 项通过")

@@ -21,6 +21,7 @@
 
   /* ── 功能分区：分区色只出现在阴影/区头/分隔线，块底保持白色 ── */
   .zone { margin-top: 38px; --z: var(--ink); --zt: #fff; }
+  .z-goal   { --z: var(--c-prop); --zt: #fff; }
   .z-asset  { --z: var(--c-eq);   --zt: #fff; }
   .z-flow   { --z: var(--c-bond); --zt: #fff; }
   .z-commit { --z: var(--c-gold); --zt: var(--ink); }
@@ -154,6 +155,24 @@
     font-weight: 800; font-size: 12px; line-height: 1.7; }
   .note b { background: var(--c-gold); padding: 0 5px; }
 
+  /* 换房路线图 */
+  .road { display: flex; gap: 3px; margin: 4px 0 16px; }
+  .road .step { flex: 1; border: 2.5px solid var(--ink); background: #fff; padding: 9px 11px; min-width: 0; }
+  .road .step .t { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; opacity: .65; }
+  .road .step .v { font-size: 19px; font-weight: 900; white-space: nowrap; }
+  .road .step.pos .v { color: var(--c-bond); }
+  .road .step.neg .v { color: var(--red); }
+  .road .step.big { background: var(--ink); color: var(--paper); }
+  .road .step.big .t { opacity: .75; }
+  .road .step.big .v { color: var(--c-bond); font-size: 22px; }
+  .cd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .cd .n { font-size: 40px; font-weight: 900; line-height: 1; }
+  .cd .u { font-weight: 900; font-size: 13px; letter-spacing: .1em; }
+  .jump { display: flex; align-items: center; gap: 12px; font-weight: 900; margin-top: 4px; flex-wrap: wrap; }
+  .jump .from { font-size: 15px; opacity: .55; }
+  .jump .to { font-size: 26px; color: var(--c-bond); }
+  .jump .arrow { font-size: 20px; }
+
   /* 粗条形（杠铃/分类） */
   .fatrow { margin-bottom: 12px; }
   .fatrow .lab { display: flex; justify-content: space-between; font-weight: 900;
@@ -243,6 +262,14 @@
     <div class="d" id="hero-d"></div>
   </div>
 </div>
+
+<section class="zone z-goal">
+<div class="zone-head"><span class="zone-kick"><span class="no">00</span>2029 换房 RELOCATION</span><span class="zone-stat" id="zs-goal"></span></div>
+<div class="blk lead">
+  <div class="sec-h">目标态路线图 <small id="reloc-sub">卖出投资房 → 学位房 · 净释放进金融资产</small></div>
+  <div class="pad" id="reloc"></div>
+</div>
+</section>
 
 <section class="zone z-asset">
 <div class="zone-head"><span class="zone-kick"><span class="no">01</span>资产 ASSETS</span><span class="zone-stat" id="zs-asset"></span></div>
@@ -480,6 +507,48 @@ safe('分区重点数字', function(){
     +' · 储蓄率 '+((PD.savingsRate||0)*100).toFixed(0)+'%');
   set('zs-commit','月固定支出 ¥'+(PD.fixedOut||0).toLocaleString()+' · 其中订阅 ¥'+(PD.subsMonthly||0).toLocaleString());
   set('zs-risk','告警 '+(PD.alerts||[]).length+' 条 · 整体杠杆 '+((PD.leverage||0)*100).toFixed(1)+'%');
+});
+
+/* 2029 换房路线图:未来数年量级最大的一次财务动作(见 docs/2029-plan.md) */
+safe('换房路线图', function(){
+  const el = document.getElementById('reloc');
+  const R = D.reloc, F = D.fi;
+  if (!R){ el.innerHTML = '<div class="note">未启用换房计划 · 在 goal.json 配置</div>'; return; }
+  const set=(id,t)=>{const e=document.getElementById(id);if(e)e.textContent=t;};
+  set('zs-goal', '距目标 '+R.monthsLeft+' 个月 · 启动截止还剩 '+R.startMonthsLeft+' 个月');
+  const sub = document.getElementById('reloc-sub');
+  if (sub) sub.textContent = `目标 ${R.targetDate}(${R.why}) · 启动截止 ${R.startBy}`;
+
+  let html = `<div class="cd"><span class="n">${R.startMonthsLeft}</span><span class="u">个月内必须启动卖房</span>
+    <span class="sub" style="font-weight:800">(目标日 ${R.targetDate} · 还剩 ${R.monthsLeft} 个月)</span></div>`;
+
+  html += `<div class="road">
+    <div class="step"><div class="t">卖出 投资房</div><div class="v">${wan(R.sell)}</div></div>
+    <div class="step neg"><div class="t">− 税费中介 ${(R.budgetPct?'':'')}${(R.cost/R.sell*100).toFixed(0)}%</div><div class="v">−${wan(R.cost).slice(1)}</div></div>
+    <div class="step neg"><div class="t">− 结清房贷</div><div class="v">−${wan(R.payoff).slice(1)}</div></div>
+    <div class="step neg"><div class="t">− 学位房(上限 ${(R.budgetPct*100).toFixed(0)}%${R.capped?'·封顶':''})</div><div class="v">−${wan(R.budget).slice(1)}</div></div>
+    <div class="step big"><div class="t">= 净释放进金融资产</div><div class="v">${wan(R.released)}</div></div>
+  </div>`;
+
+  html += `<div class="kv"><span class="txt">房产占比 <span class="sub">(锚定值口径)</span></span>
+    <span class="v">${(R.propPctNow*100).toFixed(1)}% <span class="arrow">→</span> <span style="color:var(--c-bond)">${(R.propPctAfter*100).toFixed(1)}%</span></span></div>`;
+  html += `<div class="kv"><span class="txt">金融资产</span>
+    <span class="v">${wan(D.financial)} <span class="arrow">→</span> <span style="color:var(--c-bond)">${wan(R.finAfter)}</span></span></div>`;
+  if (F && F.jump){
+    html += `<div class="kv"><span class="txt">财务自由进度 <span class="sub">(终身支出口径)</span></span>
+      <span class="v"><span class="jump"><span class="from">${(F.progress*100).toFixed(0)}%</span><span class="arrow">→</span><span class="to">${(F.jump.progressAfter*100).toFixed(0)}%</span></span></span></div>`;
+    const s0 = (F.scenarios||[]).find(s=>Math.abs(s.r-0.04)<1e-9), s1 = (F.jump.scenarios||[]).find(s=>Math.abs(s.r-0.04)<1e-9);
+    if (s0 && s1 && s0.years!=null && s1.years!=null)
+      html += `<div class="kv"><span class="txt">到达 FI(基准回报 4%)</span>
+        <span class="v"><span class="from" style="opacity:.55">${s0.years.toFixed(1)} 年</span> <span class="arrow">→</span> <span style="color:var(--c-bond)">${s1.years.toFixed(1)} 年</span></span></div>`;
+  }
+  const bridgeOk = (R.bridgeGap||0) <= 0;
+  html += `<div class="kv"><span class="txt">过桥资金 <span class="sub">(卖房款到账前要先付)</span></span>
+    <span class="v" style="color:${bridgeOk?'var(--c-bond)':'var(--red)'}">${wan(R.bridgeNeed)} ${bridgeOk?'· 可变现资产可覆盖 ✓':'· 缺口 '+wan(R.bridgeGap)}</span></div>`;
+  html += `<div class="note" style="border-style:solid;border-color:var(--c-prop)">
+    这一步的量级(${wan(R.released)})<b>远超日常再平衡</b>——它一次就把房产占比打到目标、把 FI 进度推过一半。<br>
+    ⚠ 2.5 年内要用的钱(过桥/税费/首付)<b>不该在权益里</b>:SBBI 回放显示 21 年中有 8 年负收益、最长 4 年不创新高。</div>`;
+  el.innerHTML = html;
 });
 
 /* 大类配置色块:hover = 持仓 heatmap(本类色细微深浅 + 涨跌文字色) · click = 下钻构成(动画) */
@@ -866,20 +935,36 @@ safe('财务自由进度', function(){
   const f = D.fi;
   if (!f){ el.innerHTML = '<div class="note">暂无数据 · 需固定支出与金融资产</div>'; return; }
   const sub = document.getElementById('fi-sub');
-  if (sub) sub.textContent = 'FI 线 = 年固定支出 ÷ '+(f.swr*100).toFixed(1)+'%';
+  if (sub) sub.textContent = 'FI 线 = 终身支出×12 ÷ '+(f.swr*100).toFixed(1)+'%';
   const p = Math.min(1, f.progress);
+  const pj = f.jump ? Math.min(1, f.jump.progressAfter) : null;
+  // 进度条:实心=当前,斜纹=换房一跃后
   let html = `<div class="fatrow">
     <div class="lab"><span>金融资产 ${wan(D.financial)} / FI 线 ${wan(f.number)}</span><span style="font-size:17px">${(f.progress*100).toFixed(1)}%</span></div>
-    <div class="fatbar" style="height:26px"><i style="width:${(p*100).toFixed(1)}%;background:var(--c-eq)" class="${p>=1?'full':''}"></i></div>
+    <div class="fatbar" style="height:26px;position:relative">
+      ${pj?`<i style="position:absolute;left:0;top:0;width:${(pj*100).toFixed(1)}%;background:repeating-linear-gradient(45deg,#1baf7a 0 6px,#8ff0c8 6px 12px);border-right:2.5px solid var(--ink)"></i>`:''}
+      <i style="position:relative;width:${(p*100).toFixed(1)}%;background:var(--c-eq)" class="${p>=1?'full':''}"></i>
+    </div>
   </div>`;
-  html += `<div class="kv"><span>年固定支出</span><span class="v">${wan(f.annualOut)}</span></div>`;
-  html += `<div class="kv"><span>月储蓄(当前净结余)</span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
+  if (f.jump)
+    html += `<div class="kv" style="border-bottom:0"><span class="txt">换房一跃 <span class="sub">(净释放 ${wan(f.jump.amount)} 进金融资产)</span></span>
+      <span class="v"><span class="jump"><span class="from">${(f.progress*100).toFixed(0)}%</span><span class="arrow">→</span><span class="to">${(f.jump.progressAfter*100).toFixed(0)}%</span></span></span></div>`;
+  html += `<div class="kv"><span class="txt">终身月支出 <span class="sub">(FI 线的分母)</span></span><span class="v">¥${(f.lifelongMonth||0).toLocaleString()}/月</span></div>`;
+  html += `<div class="kv"><span class="txt">月储蓄 <span class="sub">(路径口径:减全部支出)</span></span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
   const NAMES = {0.02:'保守', 0.04:'基准', 0.06:'乐观'};
-  (f.scenarios||[]).forEach(s=>{
+  (f.scenarios||[]).forEach((s,i)=>{
+    const j = f.jump ? (f.jump.scenarios||[])[i] : null;
+    const cur = s.years==null?'—':(s.years<=0?'已达标 ✓':s.years.toFixed(1)+' 年');
+    const aft = j && j.years!=null ? (j.years<=0?'已达标 ✓':j.years.toFixed(1)+' 年') : null;
     html += `<div class="kv"><span>${NAMES[s.r]||''} 实际回报 ${(s.r*100).toFixed(0)}%</span>
-      <span class="v">${s.years==null?'—':(s.years<=0?'已达标 ✓':'约 '+s.years.toFixed(1)+' 年')}</span></div>`;
+      <span class="v">${aft?`<span class="from" style="opacity:.5">${cur}</span> <span class="arrow">→</span> <span style="color:var(--c-bond)">${aft}</span>`:cur}</span></div>`;
   });
-  html += `<div class="note">实际回报 = 已扣通胀口径 · 按当前支出与储蓄外推,是导航不是承诺</div>`;
+  if ((f.endingItems||[]).length){
+    const li = f.endingItems.map(e=>`${esc(e.item)} ¥${e.amt.toLocaleString()}`).join(' · ');
+    html += `<div class="note">有终点的支出<b>不计入 FI 线</b>:${li}(合计 ¥${(f.endingMonth||0).toLocaleString()}/月)<br>
+      它们不抬高终点,但在到达前照常拖慢攒钱速度——已计入上面的路径推演。育儿会变形(幼儿园→兴趣班),按持续至孩子成年估。</div>`;
+  }
+  html += `<div class="note">斜纹段 = 换房后的位置 · 实际回报=已扣通胀 · 是导航不是承诺</div>`;
   el.innerHTML = html;
 });
 
@@ -898,7 +983,12 @@ safe('再平衡执行单', function(){
   });
   if (R.plan){
     const lines = Object.entries(R.plan.alloc||{}).map(([c,v])=>`${esc(c)} ¥${v.toLocaleString()}`).join(' · ');
-    html += `<div class="note">每月定投 <b>¥${R.plan.monthly.toLocaleString()}</b> 定向:${lines}<br>约 <b>${R.plan.months}</b> 个月不卖出即回到目标</div>`;
+    // 台账里至今没有任何一笔定投买入 → 这是「计划」,不是「正在发生的事」。
+    // 把未执行的计划呈现成已在纠偏,是最贵的一种 bug(见 docs/2029-plan.md 3)
+    const dcaDone = (PD.buys30d||0) > 0;
+    html += `<div class="note" style="border-color:${dcaDone?'var(--ink)':'var(--red)'}">
+      <b>计划</b>:每月定投 ¥${R.plan.monthly.toLocaleString()} 定向 ${lines},约 ${R.plan.months} 个月回到目标<br>
+      ${dcaDone?'':'⚠ <b>实际:台账里没有定投记录</b> —— 这张单子是计划,不是正在发生的事。要么去券商设自动扣款,要么把它当待办。'}</div>`;
   } else if (!(R.overweightSells||[]).length){
     html += `<div class="note">可调各类均在目标带内 · 维持当前定投即可</div>`;
   }
@@ -906,7 +996,12 @@ safe('再平衡执行单', function(){
     html += `<div class="kv"><span>${esc(s.cls)} 超配(超 5/25 带)</span><span class="v" style="color:var(--red)">需转出 ${wan(s.excess)}</span></div>`;
   });
   const prop = (R.rows||[]).find(r=>r.cls==='房产' && r.act);
-  if (prop) html += `<div class="note" style="border-style:solid">房产超配 ${pp(prop.devPp)}pp:不可交易项,由金融资产增长逐步稀释</div>`;
+  if (prop){
+    const RL = D.reloc;
+    html += RL
+      ? `<div class="note" style="border-style:solid;border-color:var(--c-prop)">房产超配 ${pp(prop.devPp)}pp <b>由换房解决,不靠定投稀释</b>:${RL.startMonthsLeft} 个月内启动 → ${(RL.propPctAfter*100).toFixed(0)}%。上表的月度定向只是零钱,真正的动作在 00 区。</div>`
+      : `<div class="note" style="border-style:solid">房产超配 ${pp(prop.devPp)}pp:不可交易项,由金融资产增长逐步稀释</div>`;
+  }
   el.innerHTML = html;
 });
 
@@ -949,6 +1044,19 @@ safe('现金流月账', function(){
     const tgt = Object.keys(dca.targets||{}).join('、') || '沪深300ETF';
     const pct = dca.mode==='按结余比例' ? `结余×${((dca.ratio||0)*100).toFixed(0)}%` : '固定月额';
     html += `<div class="kv"><span class="txt">定投(${pct})</span><span class="v" style="color:var(--c-bond)">¥${dca.month.toLocaleString()}/月·${esc(dca.freq||'每周')}¥${(dca.per||0).toLocaleString()}→${esc(tgt)}</span></div>`;
+  }
+  // 口径诚实性:净结余是「计划数」——月度收支只含已知固定项,生活开销从未记录。
+  // 真实储蓄要靠总量层倒推(Δ账户余额 − 投资收益),数据够了才显示(见 docs/2029-plan.md 2.2)
+  const TS = D.trueSavings;
+  if (TS && TS.insufficient){
+    html += `<div class="note" style="border-color:var(--red)">
+      ⚠ 上面的净结余是<b>计划口径</b>(月度收支只含已知固定项,<b>日常生活开销从未记录</b>)——它是储蓄率的<b>上限</b>。<br>
+      真实储蓄 = Δ账户余额 − 投资收益,需 ${TS.needDays} 天净值历史才能算(现有 ${TS.days} 天)。到那时这里会显示实测值。</div>`;
+  } else if (TS){
+    const diff = TS.unrecorded;
+    html += `<div class="note" style="border-color:${Math.abs(diff)>5000?'var(--red)':'var(--ink)'}">
+      <b>真实储蓄(实测)</b> ¥${TS.realMonthly.toLocaleString()}/月 · 期间合计 ¥${TS.real.toLocaleString()}(已扣投资收益 ¥${TS.investPnl.toLocaleString()})<br>
+      计划口径 ¥${TS.planned.toLocaleString()} → ${diff>0?`<b>未记录的生活开销约 ¥${diff.toLocaleString()}</b>`:`实际比计划多存 ¥${Math.abs(diff).toLocaleString()}`}</div>`;
   }
   html += `<div class="note">被动收入≈<b>¥${(D.passiveMonth||0).toLocaleString()}/月</b> 覆盖固定支出 ${((D.coverage||0)*100).toFixed(0)}%<br>应急可支撑 ${(D.runway||0).toFixed(0)} 个月 · 投资房若出租≈+¥${(D.hypoRent||0).toLocaleString()}/月</div>`;
   document.getElementById('cashflow').innerHTML = html;
@@ -1088,12 +1196,22 @@ safe('压力测试', function(){
   const S = D.stress;
   if (!S || !S.length){ el.innerHTML = '<div class="note">暂无数据</div>'; return; }
   let html = '';
-  S.forEach(s=>{
+  S.filter(s=>!s.reloc).forEach(s=>{
     html += `<div class="kv"><span class="txt">${esc(s.name)}</span>
       <span class="v"><span style="color:var(--red)">${(s.ddPct*100).toFixed(1)}%</span>
       <span class="sub">剩${(s.nwAfter/1e4).toFixed(0)}万 · 杠杆${s.levAfter!=null?(s.levAfter*100).toFixed(1)+'%':'—'}</span></span></div>`;
   });
-  html += `<div class="note">负债不随资产缩水——下跌时杠杆率自动放大,这正是压测要盯的数字(当前 ${((D.leverage||0)*100).toFixed(1)}%)</div>`;
+  const rel = S.filter(s=>s.reloc);
+  if (rel.length){   // 换房才是未来数年的真实风险敞口:房价跌 → 净释放缩水
+    html += `<div class="sect" style="border-top:2.5px dashed var(--ink);margin-top:12px;padding:8px 0 2px;font-weight:900;font-size:11px;letter-spacing:.18em;opacity:.6">换房情景 · 净释放</div>`;
+    rel.forEach(s=>{
+      html += `<div class="kv"><span class="txt">${esc(s.name)}</span>
+        <span class="v" style="color:${s.ok?'var(--ink)':'var(--red)'}">${wan(s.released)}
+        <span class="sub">较基准 ${s.dReleased>=0?'+':'−'}${wan(Math.abs(s.dReleased)).slice(1)}</span></span></div>`;
+    });
+  }
+  html += `<div class="note">负债不随资产缩水——下跌时杠杆率自动放大(当前 ${((D.leverage||0)*100).toFixed(1)}%)。<br>
+    ${rel.length?'<b>但未来数年的头号风险不是股市,是换房时的房价</b>——它决定净释放多少钱进金融资产。':''}</div>`;
   el.innerHTML = html;
 });
 
@@ -1139,13 +1257,15 @@ safe('流动性瀑布', function(){
 /* SBBI 历史回放:年度柱条 + 关键统计 */
 safe('历史回放', function(){
   const el = document.getElementById('sbbi');
-  const S = D.sbbi;
+  // 换房后的权重才是要长期持有的组合;当前权重 2.5 年后作废,用它回放历史没有意义
+  const S = D.sbbiGoal || D.sbbi;
+  const isGoal = !!D.sbbiGoal;
   if (!S || !(S.perYear||[]).length){ el.innerHTML = '<div class="note">缺 sbbi_returns.json · 无法回放</div>'; return; }
   const per = S.perYear;
   const wTxt = Object.entries(S.weights||{}).filter(([,v])=>v>0.001)
     .map(([c,v])=>`${c} ${(v*100).toFixed(0)}%`).join(' / ');
   const sub = document.getElementById('sbbi-sub');
-  if (sub) sub.textContent = `SBBI ${per[0].year}–${per[per.length-1].year} · 权重 ${wTxt}`;
+  if (sub) sub.textContent = `SBBI ${per[0].year}–${per[per.length-1].year} · ${isGoal?'目标态':'当前'}权重 ${wTxt}`;
   // 年度柱条 SVG:零线居中偏上,红负绿正,极值标数
   const W = 860, H = 170, top = 18, bot = 26;
   const mx = Math.max(...per.map(p=>p.r)), mn = Math.min(...per.map(p=>p.r));
@@ -1173,7 +1293,7 @@ safe('历史回放', function(){
     <div class="kpi"><div class="l">最长水下(未创新高)</div><div class="v" style="font-size:19px">${S.longestUnder} 年</div></div>
   </div>`;
   html += `<div class="note">最差:${(S.worst||[]).map(p=>`${p.year} ${pct(p.r)}`).join(' · ')} ── 出现这种年份属于设计内,再平衡纪律靠它赚钱<br>
-    口径:权益→A股整体全收益、固收→长期国债、现金→短债、黄金→上海金;不含房产与杠杆;美股敞口按A股近似,实际分散度更好</div>`;
+    ${isGoal?'<b>用换房后的目标态权重回放</b>(当前权重 2.5 年后作废,拿它推演没有意义)· ':''}口径:权益→A股整体全收益、固收→长期国债、现金→短债、黄金→上海金;不含房产与杠杆;美股敞口按A股近似,实际分散度更好</div>`;
   el.innerHTML = html;
 });
 
@@ -1188,8 +1308,14 @@ safe('警戒带', function(){
     if(icon==='warn') return ['badge y','留意'];
     return ['badge o','提示'];
   }
-  const items = [];
+  const items = [], planned = [];
+  const R = PD.reloc;
   (PD.alerts||[]).forEach(([icon,msg])=>{
+    // 房产超配是「已知 · 已有计划 · 2028 年前解决」——降级为计划内事项。
+    // 一个被无视的红牌会训练人忽略所有告警(见 docs/2029-plan.md 3)
+    if(R && msg.indexOf('房产')>=0 && (msg.indexOf('超上限')>=0 || msg.indexOf('偏离目标')>=0)){
+      planned.push(msg); return;
+    }
     let extra='';
     if(msg.indexOf('黄金')>=0 && msg.indexOf('下限')>=0){
       const gap=(0.03*nw - (classes['黄金']||0))/1e4;
@@ -1198,6 +1324,10 @@ safe('警戒带', function(){
     const [cls,label]=badge(icon);
     items.push(`<div class="tape-item"><span class="${cls}">${label}</span>${esc(msg)}${extra}</div>`);
   });
+  if(planned.length)
+    items.push(`<div class="tape-item"><span class="badge o" style="background:#4a3aa7">计划内</span>`
+      + `房产超配 —— <b>已知,已有计划</b>:${R.startMonthsLeft} 个月内启动卖房换学位房,`
+      + `届时 ${(R.propPctNow*100).toFixed(0)}% → ${(R.propPctAfter*100).toFixed(0)}%。在此之前不作为告警。</div>`);
   if (PD.fxLive === false)
     items.push(`<div class="tape-item"><span class="badge y">留意</span>汇率为兜底值（非实时），美股/港股市值可能略有偏差</div>`);
   (PD.warnings||[]).forEach(([lv,m])=>{

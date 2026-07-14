@@ -49,3 +49,5 @@ _t_*.csv
 *.bak.csv
 loans.json
 loans.bak.json
+goal.json
+goal.bak.json

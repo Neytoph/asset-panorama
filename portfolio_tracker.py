@@ -26,6 +26,9 @@ BASE = Path(__file__).resolve().parent
 # ───────────────────────── 配置 ─────────────────────────
 FX_FALLBACK = {"USD": 6.77, "HKD": 0.87, "CNY": 1.0}
 MANUAL_STALE_DAYS = 14
+# 锚定值(manual_values 里 kind=anchor):房产这类本就不该每两周动一次的估值。
+# 取值须来自可验证外部锚(同小区近3月成交均价×面积;无成交则用买入价,宁可保守),每季度重估。
+ANCHOR_STALE_DAYS = 100
 
 HOLDING_CLASS = {
     "A股权益ETF": "权益", "A股个股": "权益", "港股个股": "权益",
@@ -67,6 +70,23 @@ def read_csv(name, default=None):
 
 def load_json(name, default=None):
     return storage.load_doc(name, {} if default is None else default)
+
+
+def stale_warning(name, mv, today=None):
+    """手动值/锚定值过期提醒。anchor 类(如房产)按季度口径,不参与 14 天催更。
+    返回提醒文案或 None。"""
+    today = today or datetime.date.today()
+    try:
+        age = (today - datetime.date.fromisoformat(mv.get("updated", ""))).days
+    except ValueError:
+        return None
+    if (mv.get("kind") or "") == "anchor":
+        if age > ANCHOR_STALE_DAYS:
+            return f"{name} 锚定值已 {age} 天未重估(季度口径,取同小区近3月成交均价)"
+        return None
+    if age > MANUAL_STALE_DAYS:
+        return f"{name} 手动值已 {age} 天未更新(运行 update_values.py)"
+    return None
 
 
 def insurance_policy_starts():
@@ -340,13 +360,9 @@ def compute():
             if mv is not None:
                 price, value, missing = None, float(mv["value"]), False
                 classes[cls] = classes.get(cls, 0.0) + value
-                upd = mv.get("updated", "")
-                try:
-                    age = (datetime.date.today() - datetime.date.fromisoformat(upd)).days
-                    if age > MANUAL_STALE_DAYS:
-                        warnings.append(("info", f"{h['名称']} 手动值已 {age} 天未更新"))
-                except Exception:
-                    pass
+                w = stale_warning(h["名称"], mv)
+                if w:
+                    warnings.append(("info", w))
             else:
                 price, value, missing = None, 0.0, True
                 warnings.append(("warn", f"{h['名称']} 无行情代码且缺手动值(manual_values.json)"))
@@ -384,13 +400,9 @@ def compute():
             continue
         if name in manual:
             value = float(manual[name]["value"])
-            upd = manual[name].get("updated", "")
-            try:
-                age = (today - datetime.date.fromisoformat(upd)).days
-                if age > MANUAL_STALE_DAYS:
-                    warnings.append(("info", f"{name} 手动值已 {age} 天未更新(运行 update_values.py)"))
-            except Exception:
-                pass
+            w = stale_warning(name, manual[name], today)
+            if w:
+                warnings.append(("info", w))
         elif name in ACCOUNT_RESOLVERS:
             value = ACCOUNT_RESOLVERS[name](a["金额或估值"])
         else:

@@ -167,11 +167,32 @@ def parse_bill(raw: bytes):
     return {"source": source, "rows": rows, "warnings": warnings}
 
 
+def coverage(total_out, classified):
+    """支出去向 = 对总量的**切分**，不是加总(见 docs/2029-plan.md 2.2)。
+
+    total_out  总量层的硬数字(真实支出，来自账户余额变化，不依赖导没导账单)
+    classified 已归类金额(导了多少算多少)
+    → {total, classified, unclassified, rate}
+
+    关键:漏导账单只会让「未归类」变大，**总量永远正确**——储蓄率/FI/归因一个都不受影响。
+    所以导账单是自愿的、增量的、可以偷懒的。
+    """
+    total_out = float(total_out or 0)
+    classified = min(float(classified or 0), total_out)
+    unclassified = max(0.0, total_out - classified)
+    return {"total": round(total_out, 2), "classified": round(classified, 2),
+            "unclassified": round(unclassified, 2),
+            "rate": (classified / total_out) if total_out else 0.0}
+
+
 def summarize(raw: bytes, month: str, excludes=None):
     """
     解析并按月汇总 → 给前端的 dict：
     {source, month, expense(计入合计), excluded(被排除词命中的合计), excludedCount,
      count, top:[[对方, 金额]…], otherMonths(该文件里非目标月的支出合计), warnings}
+
+    注意:这里的 expense 是**已归类**金额,不是当月真实总支出——
+    总支出由总量层给出(见 coverage())。没导的部分落进「未归类」,不是 bug。
     """
     if excludes is None:
         kw = [k.strip() for k in DEFAULT_EXCLUDES.split(",")]

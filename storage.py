@@ -27,7 +27,7 @@ CONFIG = BASE / "storage.json"
 
 # 注册表：迁移/status 的范围。load/save 不限于注册表（按名即可读写）。
 DOCS = ["cashflow", "subscriptions", "insurance", "manual_values", "passthrough",
-        "loans", "latest_snapshot", "quotes_cache", "klines_cache"]
+        "loans", "goal", "latest_snapshot", "quotes_cache", "klines_cache"]
 TABLES = ["holdings", "accounts", "holdings_history", "insurance_cashvalue",
           "history", "history_full", "cashflow_history"]
 
