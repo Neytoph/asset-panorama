@@ -239,9 +239,12 @@ def collect(persist_history=True, fetch_klines=True):
     ins_monthly = ins.monthly_total(ins.load_policies())
     lifelong_m, ending_items = metrics.lifelong_out(cf.get("月度收支", []), subs_monthly, ins_monthly)
     reloc = metrics.relocation_plan(goal, classes, nw, prop_gross, total_debt, liquid)
+    # FI 走事件阶梯:月储蓄不是恒定的(增额寿缴清/换房/车贷还清都会改变它),
+    # 且育儿在孩子成年前必须继续供 → 三个数字(Coast/育儿储备/真·自由线)
+    events = goal.get("重大事件") or []
     fi = metrics.fi_plan(fin, fixed_out, net_cf, goal.get("FI") or cf.get("FI", {}),
                          lifelong_month=lifelong_m, ending_items=ending_items,
-                         jump=reloc["released"] if reloc else None)
+                         events=events)
     # 真实储蓄:投资收益取逐日浮盈序列的**期间增量**(不能用累计浮盈——时间窗对不上,残差会是垃圾),
     # 储蓄作为残差(自动吸收未记录的生活开支);数据不足时返回 insufficient,宁可不给数也不给错数
     real_sav = metrics.true_savings(

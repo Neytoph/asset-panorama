@@ -173,6 +173,33 @@
   .jump .to { font-size: 26px; color: var(--c-bond); }
   .jump .arrow { font-size: 20px; }
 
+  /* 未来大事时间轴:确信度 合同=实线 / 计划=虚线 / 猜测=点线 */
+  .tl { position: relative; margin: 18px 0 8px; padding-left: 4px; }
+  .tl-axis { position: absolute; left: 0; right: 0; top: 26px; height: 3px; background: var(--ink); }
+  .tl-row { display: flex; gap: 3px; }
+  .tl-ev { flex: 1; min-width: 0; position: relative; padding-top: 40px; }
+  .tl-ev .dot { position: absolute; top: 19px; left: 0; width: 17px; height: 17px;
+    border: 3px solid var(--ink); background: #fff; border-radius: 50%; }
+  .tl-ev.c-合同 .dot { background: var(--c-bond); }
+  .tl-ev.c-计划 .dot { background: var(--c-eq); }
+  .tl-ev.c-猜测 .dot { background: #fff; border-style: dotted; }
+  .tl-ev .when { position: absolute; top: 0; left: 0; font-weight: 900; font-size: 12px; }
+  .tl-ev .nm { font-weight: 900; font-size: 13px; line-height: 1.3; }
+  .tl-ev .im { font-weight: 800; font-size: 11.5px; margin-top: 3px; }
+  .tl-ev .cf { display: inline-block; font-size: 9px; font-weight: 900; padding: 1px 5px;
+    border: 1.5px solid var(--ink); margin-top: 4px; }
+  .tl-ev.c-合同 .cf { background: var(--c-bond); color: #fff; }
+  .tl-ev.c-计划 .cf { background: var(--c-eq); color: #fff; }
+  .tl-ev.c-猜测 .cf { background: repeating-linear-gradient(45deg,#fff 0 3px,#ddd 3px 6px); }
+
+  /* FI 三数字 */
+  .fi3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .fi3 .c { border: 2.5px solid var(--ink); padding: 10px 12px; background: var(--paper); }
+  .fi3 .c.free { background: var(--ink); color: var(--paper); }
+  .fi3 .c .l { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; }
+  .fi3 .c .v { font-size: 21px; font-weight: 900; line-height: 1.15; }
+  .fi3 .c .s { font-size: 10px; font-weight: 700; opacity: .7; margin-top: 2px; }
+
   /* 粗条形（杠铃/分类） */
   .fatrow { margin-bottom: 12px; }
   .fatrow .lab { display: flex; justify-content: space-between; font-weight: 900;
@@ -264,9 +291,13 @@
 </div>
 
 <section class="zone z-goal">
-<div class="zone-head"><span class="zone-kick"><span class="no">00</span>2029 换房 RELOCATION</span><span class="zone-stat" id="zs-goal"></span></div>
+<div class="zone-head"><span class="zone-kick"><span class="no">00</span>未来大事 LIFE EVENTS</span><span class="zone-stat" id="zs-goal"></span></div>
 <div class="blk lead">
-  <div class="sec-h">目标态路线图 <small id="reloc-sub">卖出投资房 → 学位房 · 净释放进金融资产</small></div>
+  <div class="sec-h">时间轴 <small id="tl-sub">会改变月储蓄/资产的事件 · 确信度:合同/计划/猜测</small></div>
+  <div class="pad" id="timeline"></div>
+</div>
+<div class="blk" style="margin-top:24px">
+  <div class="sec-h">换房路线图 <small id="reloc-sub">卖出投资房 → 学位房 · 净释放进金融资产</small></div>
   <div class="pad" id="reloc"></div>
 </div>
 </section>
@@ -509,13 +540,68 @@ safe('分区重点数字', function(){
   set('zs-risk','告警 '+(PD.alerts||[]).length+' 条 · 整体杠杆 '+((PD.leverage||0)*100).toFixed(1)+'%');
 });
 
+/* 未来大事时间轴:会改变月储蓄/资产的事件。系统只做加法,不理解因果——
+   日期不一致会在下面的月储蓄阶梯上显形 */
+safe('未来大事', function(){
+  const el = document.getElementById('timeline');
+  const EV = ((D.goal||{})['重大事件']) || [];
+  const F = D.fi;
+  if (!EV.length){ el.innerHTML = '<div class="note">未配置重大事件 · 在 goal.json 的「重大事件」添加(换房/还清贷款/子女教育…)</div>'; return; }
+  const today = new Date((D.date||'').slice(0,10) + 'T00:00:00');
+  const mAfter = s => {           // 'YYYY-MM' → 距今月数
+    const [y,m] = String(s).split('-').map(Number);
+    return (y - today.getFullYear())*12 + (m - (today.getMonth()+1));
+  };
+  const fmtM = n => n < 12 ? n+' 个月后' : (n/12).toFixed(n%12?1:0)+' 年后';
+  const evs = EV.filter(e=>e['日期']).map(e=>({...e, _m: mAfter(e['日期'])}))
+    .filter(e=>e._m >= 0).sort((a,b)=>a._m-b._m);
+  const money = v => (v>=0?'+':'−')+'¥'+Math.abs(v).toLocaleString();
+  let html = `<div class="tl"><div class="tl-axis"></div><div class="tl-row">`;
+  evs.forEach(e=>{
+    const conf = e['确信度'] || '计划';
+    const dm = e['月度影响区间']
+      ? `月储蓄 ${money(e['月度影响区间'].lo)} ~ ${money(e['月度影响区间'].hi)}`
+      : (Object.keys(e['月度影响']||{}).length
+          ? `月储蓄 ${money(Object.values(e['月度影响']).reduce((a,b)=>a+b,0))}`
+          : '');
+    const lump = e['一次性'] ? `<br>一次性 <b>${wan(e['一次性'])}</b>` : '';
+    html += `<div class="tl-ev c-${esc(conf)}" title="${esc(e['说明']||'')}">
+      <span class="dot"></span>
+      <span class="when">${esc(e['日期'])} <span class="sub">· ${fmtM(e._m)}</span></span>
+      <div class="nm">${esc(e['名称'])}</div>
+      <div class="im">${dm}${lump}</div>
+      <span class="cf">${esc(conf)}</span>
+    </div>`;
+  });
+  html += `</div></div>`;
+  // 月储蓄阶梯:恒定储蓄是假的,真实的是这条阶梯
+  if (F && (F.ladder||[]).length > 1){
+    const lad = F.ladder;
+    html += `<div class="kv" style="border-bottom:0"><span class="txt" style="font-weight:900">月储蓄阶梯 <span class="sub">(FI 推演走这条线,不是「恒定 30 年」)</span></span></div>`;
+    lad.forEach((s,i)=>{
+      const when = i===0 ? '今天' : (s.m<12 ? s.m+' 个月后' : (s.m/12).toFixed(1)+' 年后');
+      html += `<div class="kv"><span class="txt">${when} <span class="sub">${esc(s.name||'当前')}</span></span>
+        <span class="v">¥${s.save.toLocaleString()}/月${s.lump?` <span class="sub">+ 一次性 ${wan(s.lump)}</span>`:''}</span></div>`;
+    });
+  }
+  const child = EV.find(e=>e['类型']==='育儿');
+  if (child && F)
+    html += `<div class="note">育儿(至 ${esc(child['结束']||'')}) <b>不计入 FI 线</b>(它会结束)——但结束前必须供:
+      这笔钱的现值 <b>${wan(F.reserve)}</b>(区间 ${wan(F.reserveLo)}~${wan(F.reserveHi)})就是「育儿储备」,已加进真·自由线。</div>`;
+  el.innerHTML = html;
+  const zs = document.getElementById('zs-goal');
+  if (zs && F){
+    const yf = (F.freeScenarios||[]).find(x=>Math.abs(x.r-0.04)<1e-9);
+    zs.textContent = '真·自由线 '+wan(F.freeNumber)+' · 进度 '+(F.freeProgress*100).toFixed(0)+'%'
+      + (yf && yf.years!=null ? ' · 约 '+yf.years.toFixed(1)+' 年' : '');
+  }
+});
+
 /* 2029 换房路线图:未来数年量级最大的一次财务动作(见 docs/2029-plan.md) */
 safe('换房路线图', function(){
   const el = document.getElementById('reloc');
   const R = D.reloc, F = D.fi;
   if (!R){ el.innerHTML = '<div class="note">未启用换房计划 · 在 goal.json 配置</div>'; return; }
-  const set=(id,t)=>{const e=document.getElementById(id);if(e)e.textContent=t;};
-  set('zs-goal', '距目标 '+R.monthsLeft+' 个月 · 启动截止还剩 '+R.startMonthsLeft+' 个月');
   const sub = document.getElementById('reloc-sub');
   if (sub) sub.textContent = `目标 ${R.targetDate}(${R.why}) · 启动截止 ${R.startBy}`;
 
@@ -534,13 +620,16 @@ safe('换房路线图', function(){
     <span class="v">${(R.propPctNow*100).toFixed(1)}% <span class="arrow">→</span> <span style="color:var(--c-bond)">${(R.propPctAfter*100).toFixed(1)}%</span></span></div>`;
   html += `<div class="kv"><span class="txt">金融资产</span>
     <span class="v">${wan(D.financial)} <span class="arrow">→</span> <span style="color:var(--c-bond)">${wan(R.finAfter)}</span></span></div>`;
-  if (F && F.jump){
-    html += `<div class="kv"><span class="txt">财务自由进度 <span class="sub">(终身支出口径)</span></span>
-      <span class="v"><span class="jump"><span class="from">${(F.progress*100).toFixed(0)}%</span><span class="arrow">→</span><span class="to">${(F.jump.progressAfter*100).toFixed(0)}%</span></span></span></div>`;
-    const s0 = (F.scenarios||[]).find(s=>Math.abs(s.r-0.04)<1e-9), s1 = (F.jump.scenarios||[]).find(s=>Math.abs(s.r-0.04)<1e-9);
-    if (s0 && s1 && s0.years!=null && s1.years!=null)
-      html += `<div class="kv"><span class="txt">到达 FI(基准回报 4%)</span>
-        <span class="v"><span class="from" style="opacity:.55">${s0.years.toFixed(1)} 年</span> <span class="arrow">→</span> <span style="color:var(--c-bond)">${s1.years.toFixed(1)} 年</span></span></div>`;
+  if (F){
+    const pAfter = (D.financial + R.released) / F.freeNumber;
+    html += `<div class="kv"><span class="txt">真·自由进度 <span class="sub">(换房一跃)</span></span>
+      <span class="v"><span class="jump"><span class="from">${(F.freeProgress*100).toFixed(0)}%</span><span class="arrow">→</span><span class="to">${(pAfter*100).toFixed(0)}%</span></span></span></div>`;
+    const yr = arr => { const s=(arr||[]).find(x=>Math.abs(x.r-0.04)<1e-9);
+      return (s&&s.years!=null) ? s.years : null; };
+    const yc = yr(F.coastScenarios), yf = yr(F.freeScenarios);
+    if (yc!=null && yf!=null)
+      html += `<div class="kv"><span class="txt">到达时间 <span class="sub">(基准回报 4%)</span></span>
+        <span class="v">Coast <b>${yc.toFixed(1)} 年</b> <span class="sub">·</span> 真·自由 <b style="color:var(--c-bond)">${yf.toFixed(1)} 年</b></span></div>`;
   }
   const bridgeOk = (R.bridgeGap||0) <= 0;
   html += `<div class="kv"><span class="txt">过桥资金 <span class="sub">(卖房款到账前要先付)</span></span>
@@ -935,36 +1024,45 @@ safe('财务自由进度', function(){
   const f = D.fi;
   if (!f){ el.innerHTML = '<div class="note">暂无数据 · 需固定支出与金融资产</div>'; return; }
   const sub = document.getElementById('fi-sub');
-  if (sub) sub.textContent = 'FI 线 = 终身支出×12 ÷ '+(f.swr*100).toFixed(1)+'%';
-  const p = Math.min(1, f.progress);
-  const pj = f.jump ? Math.min(1, f.jump.progressAfter) : null;
-  // 进度条:实心=当前,斜纹=换房一跃后
-  let html = `<div class="fatrow">
-    <div class="lab"><span>金融资产 ${wan(D.financial)} / FI 线 ${wan(f.number)}</span><span style="font-size:17px">${(f.progress*100).toFixed(1)}%</span></div>
+  if (sub) sub.textContent = '三个数字 · 提取率 '+(f.swr*100).toFixed(1)+'% · 沿事件阶梯推演';
+  const yr = arr => { const s=(arr||[]).find(x=>Math.abs(x.r-0.04)<1e-9);
+    return (s&&s.years!=null) ? (s.years<=0?'已达标 ✓':s.years.toFixed(1)+' 年') : '—'; };
+  const pc = v => (Math.min(1,v)*100);
+
+  // 三个数字:它们回答三个**不同的**问题(见 docs/2029-plan.md 2.6)
+  let html = `<div class="fi3">
+    <div class="c"><div class="l">COAST FI</div><div class="v">${wan(f.coastNumber)}</div>
+      <div class="s">${(f.coastProgress*100).toFixed(0)}% · ${yr(f.coastScenarios)}<br>可以不再为退休存钱</div></div>
+    <div class="c"><div class="l">育儿储备</div><div class="v">${wan(f.reserve)}</div>
+      <div class="s">${wan(f.reserveLo)}~${wan(f.reserveHi)}<br>孩子成年前必须供</div></div>
+    <div class="c free"><div class="l">真 · 自由线</div><div class="v">${wan(f.freeNumber)}</div>
+      <div class="s">${(f.freeProgress*100).toFixed(0)}% · ${yr(f.freeScenarios)}<br>可以不上班了</div></div>
+  </div>`;
+
+  // 进度条:实心=真·自由进度,浅色=Coast 进度(更靠前)
+  html += `<div class="fatrow">
+    <div class="lab"><span>金融资产 ${wan(D.financial)}</span><span style="font-size:14px">Coast ${(f.coastProgress*100).toFixed(0)}% · 自由 ${(f.freeProgress*100).toFixed(0)}%</span></div>
     <div class="fatbar" style="height:26px;position:relative">
-      ${pj?`<i style="position:absolute;left:0;top:0;width:${(pj*100).toFixed(1)}%;background:repeating-linear-gradient(45deg,#1baf7a 0 6px,#8ff0c8 6px 12px);border-right:2.5px solid var(--ink)"></i>`:''}
-      <i style="position:relative;width:${(p*100).toFixed(1)}%;background:var(--c-eq)" class="${p>=1?'full':''}"></i>
+      <i style="position:absolute;left:0;top:0;width:${pc(f.coastProgress).toFixed(1)}%;background:repeating-linear-gradient(45deg,#8ff0c8 0 6px,#fff 6px 12px);border-right:2.5px solid var(--ink)"></i>
+      <i style="position:relative;width:${pc(f.freeProgress).toFixed(1)}%;background:var(--c-eq)"></i>
     </div>
   </div>`;
-  if (f.jump)
-    html += `<div class="kv" style="border-bottom:0"><span class="txt">换房一跃 <span class="sub">(净释放 ${wan(f.jump.amount)} 进金融资产)</span></span>
-      <span class="v"><span class="jump"><span class="from">${(f.progress*100).toFixed(0)}%</span><span class="arrow">→</span><span class="to">${(f.jump.progressAfter*100).toFixed(0)}%</span></span></span></div>`;
-  html += `<div class="kv"><span class="txt">终身月支出 <span class="sub">(FI 线的分母)</span></span><span class="v">¥${(f.lifelongMonth||0).toLocaleString()}/月</span></div>`;
-  html += `<div class="kv"><span class="txt">月储蓄 <span class="sub">(路径口径:减全部支出)</span></span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
+  html += `<div class="kv"><span class="txt">终身月支出 <span class="sub">(Coast FI 的分母)</span></span><span class="v">¥${(f.lifelongMonth||0).toLocaleString()}/月</span></div>`;
+  html += `<div class="kv"><span class="txt">月储蓄(当前) <span class="sub">会随事件上升,见 00 区阶梯</span></span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
   const NAMES = {0.02:'保守', 0.04:'基准', 0.06:'乐观'};
-  (f.scenarios||[]).forEach((s,i)=>{
-    const j = f.jump ? (f.jump.scenarios||[])[i] : null;
-    const cur = s.years==null?'—':(s.years<=0?'已达标 ✓':s.years.toFixed(1)+' 年');
-    const aft = j && j.years!=null ? (j.years<=0?'已达标 ✓':j.years.toFixed(1)+' 年') : null;
-    html += `<div class="kv"><span>${NAMES[s.r]||''} 实际回报 ${(s.r*100).toFixed(0)}%</span>
-      <span class="v">${aft?`<span class="from" style="opacity:.5">${cur}</span> <span class="arrow">→</span> <span style="color:var(--c-bond)">${aft}</span>`:cur}</span></div>`;
+  (f.freeScenarios||[]).forEach((s,i)=>{
+    const lo = (f.freeScenariosLo||[])[i], hi = (f.freeScenariosHi||[])[i];
+    const band = (lo&&hi&&lo.years!=null&&hi.years!=null && Math.abs(hi.years-lo.years)>0.05)
+      ? ` <span class="sub">(${lo.years.toFixed(1)}~${hi.years.toFixed(1)})</span>` : '';
+    html += `<div class="kv"><span>${NAMES[s.r]||''} 实际回报 ${(s.r*100).toFixed(0)}% → 真·自由</span>
+      <span class="v">${s.years==null?'—':(s.years<=0?'已达标 ✓':s.years.toFixed(1)+' 年')}${band}</span></div>`;
   });
   if ((f.endingItems||[]).length){
     const li = f.endingItems.map(e=>`${esc(e.item)} ¥${e.amt.toLocaleString()}`).join(' · ');
-    html += `<div class="note">有终点的支出<b>不计入 FI 线</b>:${li}(合计 ¥${(f.endingMonth||0).toLocaleString()}/月)<br>
-      它们不抬高终点,但在到达前照常拖慢攒钱速度——已计入上面的路径推演。育儿会变形(幼儿园→兴趣班),按持续至孩子成年估。</div>`;
+    html += `<div class="note">有终点的支出<b>不计入 Coast FI</b>:${li}<br>
+      但育儿在结束前仍要供 → 单列为「育儿储备」${wan(f.reserve)},已加进真·自由线。<b>2029 年摸到 Coast 线不等于能退休。</b></div>`;
   }
-  html += `<div class="note">斜纹段 = 换房后的位置 · 实际回报=已扣通胀 · 是导航不是承诺</div>`;
+  html += `<div class="note">区间来自「猜测」类事件(兴趣班 8k~12k)· 实际回报=已扣通胀 · 是导航不是承诺</div>`;
   el.innerHTML = html;
 });
 

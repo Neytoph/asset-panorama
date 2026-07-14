@@ -167,6 +167,85 @@ def _years_to(target, start, monthly_saving, r):
     return None
 
 
+CONFIDENCE = ("合同", "计划", "猜测")   # 确信度:合同=写死 / 计划=自己定的 / 猜测=拍脑袋
+
+
+def _months_between(a, b):
+    return (b.year - a.year) * 12 + b.month - a.month
+
+
+def event_ladder(events, base_saving, today=None, side="mid"):
+    """重大事件 → 月储蓄阶梯 + 一次性资金注入。
+    每个事件声明它对月度现金流的影响(正=每月多存下来)与一次性金额；系统只做加法，
+    不理解因果(换房与房贷结清的日期一致性由用户保证——不一致会在阶梯曲线上显形)。
+    side: 'lo'|'mid'|'hi' 取金额区间的哪一端(区间来自「猜测」类事件)。
+    返回 [(月偏移, 月储蓄, 一次性注入, 事件名)]，按时间排序，含起点 (0, base, 0, None)。"""
+    today = today or datetime.date.today()
+    steps = []
+    for e in events or []:
+        try:
+            d = datetime.date.fromisoformat(str(e.get("日期"))[:10] if len(str(e.get("日期"))) > 7
+                                            else str(e.get("日期")) + "-01")
+        except ValueError:
+            continue
+        m = _months_between(today, d)
+        if m < 0:
+            continue                        # 已发生的事件不再影响未来路径
+        rng = e.get("月度影响区间")          # {"lo":.., "hi":..} 优先于「月度影响合计」
+        if isinstance(rng, dict):
+            dm = rng.get({"lo": "lo", "mid": "mid", "hi": "hi"}[side],
+                         rng.get("mid", (rng.get("lo", 0) + rng.get("hi", 0)) / 2))
+        else:
+            dm = sum((e.get("月度影响") or {}).values())
+        steps.append({"m": m, "dSave": float(dm or 0),
+                      "lump": float(e.get("一次性") or 0),
+                      "name": e.get("名称", ""), "conf": e.get("确信度", "计划")})
+    steps.sort(key=lambda x: x["m"])
+    ladder, save = [(0, base_saving, 0.0, None)], base_saving
+    for s in steps:
+        save += s["dSave"]
+        ladder.append((s["m"], save, s["lump"], s["name"]))
+    return ladder
+
+
+def _grow(start, target, ladder, r, max_months=720):
+    """沿事件阶梯逐月复利，返回到达 target 的月数(未达返回 None)。"""
+    rm = (1 + r) ** (1 / 12.0) - 1
+    bal, idx, save = start, 0, ladder[0][1]
+    for m in range(max_months):
+        while idx < len(ladder) and ladder[idx][0] == m:
+            save = ladder[idx][1]
+            bal += ladder[idx][2]          # 一次性注入
+            idx += 1
+        if bal >= target:
+            return m / 12.0
+        bal = bal * (1 + rm) + save
+    return None
+
+
+def childcare_reserve(events, r=0.04, today=None, side="mid"):
+    """育儿储备:FI 线只算「孩子成年后的终身支出」，但孩子成年前的育儿开销仍要花钱——
+    它不是消失了，是一笔**有限期的负债**。返回其现值(按实际回报折现)。
+    读 events 里 类型=='育儿' 的项:{月额区间:{lo,hi}, 结束: 'YYYY-MM'}"""
+    today = today or datetime.date.today()
+    total = 0.0
+    for e in events or []:
+        if e.get("类型") != "育儿":
+            continue
+        try:
+            end = datetime.date.fromisoformat(str(e["结束"]) + "-01"
+                                              if len(str(e["结束"])) == 7 else str(e["结束"]))
+        except (ValueError, KeyError):
+            continue
+        n = max(0, _months_between(today, end))
+        rng = e.get("月额区间") or {}
+        amt = rng.get(side, rng.get("mid", e.get("月额", 0)))
+        rm = (1 + r) ** (1 / 12.0) - 1
+        pv = amt * (1 - (1 + rm) ** -n) / rm if rm > 0 and n else amt * n
+        total += pv
+    return total
+
+
 def lifelong_out(flow_items, subs_monthly=0.0, ins_monthly=0.0):
     """终身支出(月) = 月度收支里「终身」!=False 的项 + 订阅 + 保险摊月。
     有终点的支出(房贷/幼儿园/车贷)不抬高 FI 终点，但仍在路径上拖慢攒钱速度。
@@ -182,10 +261,19 @@ def lifelong_out(flow_items, subs_monthly=0.0, ins_monthly=0.0):
 
 
 def fi_plan(financial, fixed_out, monthly_saving, cfg=None,
-            lifelong_month=None, ending_items=None, jump=None):
-    """FI 线 = **终身**月支出×12 / 提取率(不含房贷/幼儿园这类有终点的支出，见 docs/2029-plan.md 2.4)。
-    monthly_saving 走路径口径(收入 − **全部**支出，不假装现在不用交学费)。
-    jump: 一次性资金跃迁(如换房净释放)，给出「跃迁后」的双轨进度。"""
+            lifelong_month=None, ending_items=None, events=None, today=None):
+    """财务自由需要**三个**数字，不是一个(见 docs/2029-plan.md 2.6)：
+
+      coastNumber  Coast FI 线 = 终身月支出×12 / 提取率
+                   —— 「可以不再为退休存钱了」。但孩子没成年，还得工作供他。
+      reserve      育儿储备 = 孩子成年前育儿开销的现值
+                   —— FI 线把育儿剔除了(它会结束)，但**在结束前仍要花钱**：它是一笔有限期负债。
+      freeNumber   真·自由线 = coastNumber + reserve
+                   —— 「可以不上班了」。这才是那个能对应真实决策的数字。
+
+    路径推演沿 event_ladder 走**阶梯**(月储蓄会随事件变化，一次性注入直接进本金)，
+    而不是假设「月储蓄恒定 30 年」。带区间的「猜测」类事件 → 输出 lo/hi 两端。
+    """
     cfg = cfg or {}
     swr = cfg.get("提取率", 0.035)
     scenarios = cfg.get("实际回报情景", [0.02, 0.04, 0.06])
@@ -193,23 +281,39 @@ def fi_plan(financial, fixed_out, monthly_saving, cfg=None,
     annual_out = base_month * 12
     if annual_out <= 0 or swr <= 0:
         return None
-    number = annual_out / swr
+    coast = annual_out / swr
     s = max(0.0, monthly_saving)
-    years = [{"r": r, "years": (lambda y: round(y, 1) if y is not None else None)(
-        _years_to(number, financial, s, r))} for r in scenarios]
-    out = {"number": round(number), "swr": swr,
-           "progress": financial / number, "annualOut": round(annual_out),
-           "monthlySaving": round(s), "scenarios": years,
-           "lifelongMonth": round(base_month),
-           "endingItems": ending_items or [],
-           "endingMonth": round(sum(x["amt"] for x in (ending_items or [])))}
-    if jump:                       # 换房一跃:释放的钱直接进金融资产
-        after = financial + jump
-        out["jump"] = {
-            "amount": round(jump),
-            "progressAfter": after / number,
-            "scenarios": [{"r": r, "years": (lambda y: round(y, 1) if y is not None else None)(
-                _years_to(number, after, s, r))} for r in scenarios]}
+
+    def pack(target, side):
+        lad = event_ladder(events, s, today, side)
+        return [{"r": r, "years": (lambda y: round(y, 1) if y is not None else None)(
+            _grow(financial, target, lad, r))} for r in scenarios]
+
+    res_mid = childcare_reserve(events, 0.04, today, "mid")
+    res_lo = childcare_reserve(events, 0.04, today, "lo")
+    res_hi = childcare_reserve(events, 0.04, today, "hi")
+    free_mid = coast + res_mid
+
+    ladder = event_ladder(events, s, today, "mid")
+    out = {
+        "swr": swr, "lifelongMonth": round(base_month), "annualOut": round(annual_out),
+        "monthlySaving": round(s),
+        "coastNumber": round(coast), "coastProgress": financial / coast,
+        "reserve": round(res_mid), "reserveLo": round(res_lo), "reserveHi": round(res_hi),
+        "freeNumber": round(free_mid), "freeProgress": financial / free_mid if free_mid else 0,
+        "freeLo": round(coast + res_lo), "freeHi": round(coast + res_hi),
+        "coastScenarios": pack(coast, "mid"),
+        "freeScenarios": pack(free_mid, "mid"),
+        "freeScenariosLo": pack(coast + res_lo, "lo"),   # 育儿花得少 → 目标低且月储蓄高
+        "freeScenariosHi": pack(coast + res_hi, "hi"),
+        "endingItems": ending_items or [],
+        "endingMonth": round(sum(x["amt"] for x in (ending_items or []))),
+        "ladder": [{"m": m, "save": round(sv), "lump": round(lp), "name": nm}
+                   for m, sv, lp, nm in ladder],
+        # 兼容旧字段(面板过渡期):number/progress 指向真·自由线
+        "number": round(free_mid), "progress": financial / free_mid if free_mid else 0,
+        "scenarios": pack(free_mid, "mid"),
+    }
     return out
 
 

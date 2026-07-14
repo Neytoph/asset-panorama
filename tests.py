@@ -469,19 +469,63 @@ def test_lifelong_out():
     assert sum(e["amt"] for e in ending) == 14800
 
 
-def test_fi_plan_lifelong_and_jump():
-    """FI 线用终身口径(显著低于全额口径);jump=换房净释放 → 双轨进度。"""
+def test_event_ladder():
+    """事件阶梯:月储蓄随事件变化,一次性注入独立;已过期的事件不再影响未来。"""
+    from metrics import event_ladder
+    today = datetime.date(2026, 7, 14)
+    events = [
+        {"名称": "增额寿缴清", "日期": "2028-11", "月度影响": {"保费": 8333}},
+        {"名称": "换房", "日期": "2029-09", "一次性": 2_706_000, "月度影响": {"房贷": 4800}},
+        {"名称": "兴趣班", "日期": "2029-09", "月度影响区间": {"lo": 2000, "mid": 0, "hi": -2000}},
+        {"名称": "已过去的事", "日期": "2025-01", "月度影响": {"x": 99999}},   # 忽略
+    ]
+    lad = event_ladder(events, 32_732, today, "mid")
+    assert lad[0] == (0, 32_732, 0.0, None)
+    assert lad[1][0] == 28 and lad[1][1] == 32_732 + 8333        # 增额寿
+    assert lad[2][2] == 2_706_000                                 # 一次性注入
+    assert lad[-1][1] == 32_732 + 8333 + 4800 + 0                 # mid 区间 = 0
+    lo = event_ladder(events, 32_732, today, "lo")
+    hi = event_ladder(events, 32_732, today, "hi")
+    assert lo[-1][1] > hi[-1][1]                                  # 兴趣班便宜 → 存得多
+    assert not any(s[3] == "已过去的事" for s in lad)
+
+
+def test_childcare_reserve():
+    """育儿储备:FI 线剔除了育儿,但孩子成年前仍要供 —— 它是一笔有限期负债的现值。"""
+    from metrics import childcare_reserve
+    today = datetime.date(2026, 9, 1)
+    ev = [{"类型": "育儿", "结束": "2036-09", "月额区间": {"lo": 8000, "mid": 10000, "hi": 12000}}]
+    mid = childcare_reserve(ev, 0.04, today, "mid")
+    lo = childcare_reserve(ev, 0.04, today, "lo")
+    hi = childcare_reserve(ev, 0.04, today, "hi")
+    assert lo < mid < hi
+    assert 0 < mid < 10000 * 120                    # 现值必然小于名义总额(有折现)
+    assert abs(mid - 10000 * 120 * 0.83) < 10000 * 120 * 0.1   # 10年@4% 折现约 83%
+    assert childcare_reserve([], 0.04, today) == 0
+
+
+def test_fi_three_numbers():
+    """FI 需要三个数字:Coast(不再为退休存钱) / 育儿储备 / 真·自由线(可以不上班)。
+    关键不变量:真·自由线 = Coast + 育儿储备,且它比 Coast 晚到达。"""
     from metrics import fi_plan
-    full = fi_plan(4_000_000, 41_839, 32_732, {"提取率": 0.035, "实际回报情景": [0.04]})
-    life = fi_plan(4_000_000, 41_839, 32_732, {"提取率": 0.035, "实际回报情景": [0.04]},
-                   lifelong_month=25_656, ending_items=[{"item": "房贷", "amt": 4800}],
-                   jump=2_700_000)
-    assert life["number"] < full["number"]                  # 终身口径的 FI 线更低
-    assert life["number"] == round(25_656 * 12 / 0.035)
-    assert life["progress"] > full["progress"]              # 进度因此更高
-    assert life["endingMonth"] == 4800
-    assert life["jump"]["progressAfter"] > life["progress"] # 换房一跃
-    assert life["jump"]["scenarios"][0]["years"] < life["scenarios"][0]["years"]
+    today = datetime.date(2026, 7, 14)
+    cfg = {"提取率": 0.035, "实际回报情景": [0.04]}
+    events = [
+        {"名称": "换房", "日期": "2029-09", "一次性": 2_706_000, "月度影响": {"房贷": 4800}},
+        {"类型": "育儿", "结束": "2040-09", "月额区间": {"lo": 8000, "mid": 10000, "hi": 12000}},
+    ]
+    f = fi_plan(4_114_000, 41_839, 32_732, cfg, lifelong_month=25_656,
+                ending_items=[{"item": "房贷", "amt": 4800}], events=events, today=today)
+    assert f["coastNumber"] == round(25_656 * 12 / 0.035)
+    assert f["reserve"] > 0
+    assert f["freeNumber"] == f["coastNumber"] + f["reserve"]      # 三者的核心关系
+    assert f["freeLo"] < f["freeNumber"] < f["freeHi"]             # 兴趣班区间 → 自由线区间
+    assert f["coastProgress"] > f["freeProgress"]                  # Coast 更容易达到
+    cy = f["coastScenarios"][0]["years"]
+    fy = f["freeScenarios"][0]["years"]
+    assert cy < fy, "达到 Coast FI 后仍需继续工作供孩子 → 真·自由更晚"
+    # 阶梯生效:换房的一次性注入让到达时间显著早于「恒定储蓄」的朴素算法
+    assert any(s["lump"] > 0 for s in f["ladder"])
 
 
 def test_relocation_plan():
@@ -626,7 +670,9 @@ if __name__ == "__main__":
     check("IPS 操作合规审计", test_ips_check)
     check("支出去向=对总量的切分", test_bill_coverage)
     check("终身支出口径(FI 分母)", test_lifelong_out)
-    check("FI 双轨:终身口径 + 换房一跃", test_fi_plan_lifelong_and_jump)
+    check("事件阶梯(月储蓄随事件变化)", test_event_ladder)
+    check("育儿储备(有限期负债的现值)", test_childcare_reserve)
+    check("FI 三个数字:Coast/育儿储备/真·自由", test_fi_three_numbers)
     check("换房路线图(预算反推/净释放)", test_relocation_plan)
     check("真实储蓄倒推与数据不足守卫", test_true_savings_guard)
     check("压测:换房房价情景", test_stress_relocation)
