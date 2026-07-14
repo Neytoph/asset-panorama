@@ -4,6 +4,7 @@
 全景视图生成器（ECharts，需联网渲染图表）：经典配色 → panorama_origin.html
 复用 panorama_data.collect()。用法：python3 panorama_themes.py
 """
+import storage
 import json
 from pathlib import Path
 from panorama_data import collect
@@ -644,7 +645,7 @@ mkBar('c_liq',D.liq);
 }})();
 window.addEventListener('resize',()=>document.querySelectorAll('.chart').forEach(e=>{{const c=echarts.getInstanceByDom(e);c&&c.resize();}}));
 </script></body></html>"""
-    out = BASE / t["file"]
+    out = storage.DATA_ROOT / t["file"]
     out.write_text(html, encoding="utf-8")
     print(f"✅ {t['name']} → {out.name}")
 

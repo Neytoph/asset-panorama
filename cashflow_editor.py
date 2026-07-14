@@ -1299,6 +1299,75 @@ def parse_holdings_save(fields):
     return rows, prices, manual_updates, acct_new, note
 
 
+def _has_data():
+    """有没有真实数据?——判断是不是第一次用。演示模式永远算「有」。"""
+    import storage
+    if storage.DEMO:
+        return True
+    try:
+        if storage.load_table("accounts", []):
+            return True
+        if storage.load_table("holdings", []):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def welcome_page():
+    """空数据时的上手页:一片空白的面板毫无意义,给两条明确的路。"""
+    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>资产全景 · 上手</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<style>
+ *{{margin:0;padding:0;box-sizing:border-box}}
+ body{{background:#f4f1ea;color:#111;font:15px/1.6 "Helvetica Neue","PingFang SC",system-ui,sans-serif;
+   max-width:820px;margin:0 auto;padding:48px 26px}}
+ h1{{font-size:36px;font-weight:900;border-bottom:5px solid #111;padding-bottom:12px;margin-bottom:8px}}
+ .sub{{font-weight:700;opacity:.65;margin-bottom:30px}}
+ .card{{border:3px solid #111;background:#fff;box-shadow:6px 6px 0 #111;padding:20px 24px;margin-bottom:22px}}
+ .card h2{{font-size:19px;font-weight:900;margin-bottom:6px}}
+ .card p{{font-weight:600;font-size:14px;margin-bottom:10px}}
+ .card.hero{{box-shadow:6px 6px 0 #2a78d6}}
+ code{{background:#111;color:#f4f1ea;padding:2px 8px;font-weight:800;font-size:13px;display:inline-block;margin:3px 0}}
+ ol{{margin:8px 0 0 20px;font-weight:700;font-size:14px}} ol li{{margin:5px 0}}
+ .warn{{border:2.5px dashed #e34948;padding:10px 13px;margin-top:12px;font-weight:800;font-size:13px}}
+</style></head><body>
+<h1>资产全景</h1>
+<div class="sub">还没有数据 —— 选一条路开始。</div>
+
+<div class="card hero">
+  <h2>① 先看效果(1 分钟)</h2>
+  <p>用演示数据(虚构人物「张小满」一家)跑一遍,看看这东西长什么样、值不值得你花时间填。</p>
+  <code>PANORAMA_DEMO=1 python3 rebuild_views.py &amp;&amp; open demo/panorama_poster.html</code>
+  <p style="margin-top:8px">或者交互式:<code>python3 start.py</code> → 选 1</p>
+</div>
+
+<div class="card">
+  <h2>② 录入我的数据</h2>
+  <p>从演示配置起步——<b>它就是最好的填写参照</b>(每个字段该填什么样,照着改)。</p>
+  <code>python3 start.py</code> → 选 2
+  <ol>
+    <li><b>accounts.csv + manual_values.json</b> —— 先把「你有多少钱」填对,这步做完就有净资产和大类配置了</li>
+    <li><b>cashflow.json</b> —— 收入 + 支出</li>
+    <li><b>holdings.csv</b> —— 有股票/ETF 才需要</li>
+    <li><b>goal.json</b> —— 你未来几年的大事(换房/还清贷款/子女教育)。没有它,面板只会说「现在怎样」,不会说「要去哪」</li>
+    <li>订阅/保险/负债按需填,不填不影响主流程</li>
+  </ol>
+  <div class="warn">⚠ 最容易犯的错:月度支出只填房贷房租、不填吃饭购物 —— 储蓄率会虚高一倍,
+  后面所有的财务自由推演都跟着错。</div>
+</div>
+
+<div class="card">
+  <h2>③ 填完之后</h2>
+  <p>刷新本页即可进入面板;或在终端跑:</p>
+  <code>python3 portfolio_tracker.py</code> 终端看数字<br>
+  <code>python3 rebuild_views.py</code> 生成全景面板
+</div>
+</body></html>"""
+
+
 def shell(default="origin", skin=""):
     """外壳页：顶部标签栏 + iframe。持仓全景 / 现金流编辑 一页切换。
     skin='poster' 时壳页换新粗野主义外观(选中「色块海报」主题即全面板跟随)。"""
@@ -1407,6 +1476,9 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path)
         path, q = route.path, parse_qs(route.query)
         if path in ("/", "/index.html"):
+            if not _has_data():          # 新用户:一片空白的面板毫无意义,先给一张上手页
+                self._send(welcome_page())
+                return
             skin = self._skin()
             self._send(shell(default="poster" if skin == "poster" else "origin", skin=skin))
         elif path == "/edit":

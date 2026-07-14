@@ -68,20 +68,47 @@ asset-panorama/
 └── docs/                      功能规格与参考文档
 ```
 
-## 快速开始
+## 5 分钟上手
 
-首次克隆后，从 `*.example` 复制个人配置（仓库不含真实持仓/账户数据）：
+零依赖（只要 Python 3.8+，不用装任何包）。**两条路，选一条：**
+
+### ① 先看效果（1 分钟，不碰你的任何文件）
+
+用演示数据跑一遍 —— 虚构人物「张小满」一家，双职工带娃、有房贷有保险有换房计划，
+每一张卡都有内容：
 
 ```bash
-cp holdings.csv.example holdings.csv
-cp accounts.csv.example accounts.csv
-cp manual_values.json.example manual_values.json
-cp passthrough.json.example passthrough.json
-cp cashflow.json.example cashflow.json
-cp subscriptions.json.example subscriptions.json
-cp insurance.json.example insurance.json
-# 如有增额寿：cp insurance_cashvalue.csv.example insurance_cashvalue.csv
+PANORAMA_DEMO=1 python3 rebuild_views.py && open demo/panorama_poster.html
 ```
+
+或者交互式：`python3 start.py` → 选 1。
+
+看完觉得有用，再填自己的。
+
+### ② 录入我的数据
+
+```bash
+python3 start.py        # → 选 2，从演示配置起步（它就是最好的填写参照）
+```
+
+**按这个顺序改，每改完一个就能跑一次看效果：**
+
+| 顺序 | 文件 | 填什么 | 不填会怎样 |
+|---|---|---|---|
+| 1 | `accounts.csv` + `manual_values.json` | 没有行情的账户：理财/存款/保险/房产/**日常现金** | 没有净资产 |
+| 2 | `cashflow.json` | 收入 + 月度支出 | 没有储蓄率/现金流 |
+| 3 | `holdings.csv` | 股票/ETF（能实时报价的） | 没有持仓地图和实时估值 |
+| 4 | `goal.json` | **未来几年的大事**：换房、还清贷款、子女教育 | 面板只会说「现在怎样」，不会说「要去哪」 |
+| 5 | 订阅/保险/负债 | 按需 | 不影响主流程 |
+
+> ⚠️ **最容易犯的错**：月度支出只填房贷房租，不填吃饭购物 —— 储蓄率会虚高一倍，
+> 后面所有财务自由推演跟着错。（更稳的做法是让系统从账户余额变化倒推真实储蓄，
+> 见 [docs/2029-plan.md](docs/2029-plan.md) 2.2）
+
+填完直接开面板：`python3 cashflow_editor.py` → http://127.0.0.1:8765
+（没数据时它会显示上手引导页，不会给你一个空白面板。）
+
+### 命令速查
 
 ```bash
 python3 cashflow_editor.py       # ⭐ 本地面板（全景/现金流/订阅/对账/保险/负债/持仓管理）→ http://127.0.0.1:8765

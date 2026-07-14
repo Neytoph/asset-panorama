@@ -8,6 +8,8 @@ templates/*.html 里的占位符注入 panorama_data.collect() 的完整 JSON，
 """
 import json
 from pathlib import Path
+
+import storage
 from panorama_data import collect
 
 BASE = Path(__file__).resolve().parent
@@ -36,7 +38,7 @@ def render(tpl_name, out_name, label, pd_json):
     if ECHARTS_CDN_TAG in html and ECHARTS_VENDOR.exists():
         js = ECHARTS_VENDOR.read_text(encoding="utf-8").replace("</script", "<\\/script")
         html = html.replace(ECHARTS_CDN_TAG, "<script>\n" + js + "\n</script>", 1)
-    out = BASE / out_name
+    out = storage.DATA_ROOT / out_name
     out.write_text(html, encoding="utf-8")
     print(f"✅ {label} → {out.name}")
 

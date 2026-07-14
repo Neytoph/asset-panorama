@@ -51,3 +51,16 @@ loans.json
 loans.bak.json
 goal.json
 goal.bak.json
+
+# ── 演示数据 demo/(虚构人物「张小满」,要进版本库供新用户上手)──
+# 配置文件放行(上面的规则按文件名匹配会误伤),但演示的运行产物不进库
+!demo/*.json
+!demo/*.csv
+demo/*.html
+demo/history*.csv
+demo/holdings_history.csv
+demo/cashflow_history.csv
+demo/latest_snapshot.json
+demo/quotes_cache.json
+demo/klines_cache.json
+demo/*.bak.*

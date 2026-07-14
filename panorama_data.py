@@ -428,6 +428,7 @@ def collect(persist_history=True, fetch_klines=True):
         "pnlTotal": round(pnl_total),
         "perf": perf, "attribution": attrib, "fi": fi, "rebalance": reb,
         "stress": stress, "insGap": ins_gap, "policyLoan": round(policy_loan),
+        "demo": storage.DEMO,     # 演示模式 → 面板挂「虚构人物」横幅,别被当成真人数据
         "goal": goal, "reloc": reloc, "trueSavings": real_sav,
         # 近 30 天有没有真的买入过?——用来揭穿「执行单显示在纠偏,实际一笔没投」
         "buys30d": sum(1 for r in history_rows if r.get("动作") == "买入"

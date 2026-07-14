@@ -7,6 +7,7 @@
 「变动原因进台账」的闭环:每笔操作在这里对照纪律被公开检视。
 纯静态无 JS、零网络(只读配置与 CSV),rebuild_views 会自动重建。
 """
+import storage
 import datetime
 from pathlib import Path
 
@@ -126,7 +127,7 @@ def build():
 
 <footer><span>ASSET PANORAMA · IPS</span><span>重建 {gen}</span></footer>
 </body></html>"""
-    out = BASE / "ips.html"
+    out = storage.DATA_ROOT / "ips.html"
     out.write_text(html, encoding="utf-8")
     print(f"✅ 投资政策声明 → {out.name}(交易 {len(trades)} 笔,违纪 {n_bad}/提示 {n_warn})")
     return out
