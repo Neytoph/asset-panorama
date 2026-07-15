@@ -2046,6 +2046,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
+        if route == "/sketch-assets":
+            # 资产板块「换成我的」:五大类约数 → 速写账户,替换样板(引导 v2)
+            import sketch
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                vals = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            except json.JSONDecodeError:
+                vals = {}
+            sketch.apply_asset_sketch(vals)
+            self._rebuild_views()
+            self._send(b'{"ok":true}')
+            return
         if route == "/save-goal":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
