@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-首次上手向导：python3 start.py
+建数据脚本：python3 start.py
 
-两条路，选一条：
-  1) 先看效果 —— 用演示数据(虚构人物「张小满」一家)跑一遍，1 分钟看到成品；
-  2) 录入自己的数据 —— 从演示配置起步(它就是最好的填写参照)，逐个文件改成你的。
-
+从演示配置起步(demo/ 就是最好的填写参照)，逐个文件生成成你自己的账本。
+台账类(负债/保险/订阅/持仓)给空模板，不带别人的余额进来。
 不覆盖已有数据：任何已存在的文件都会跳过并提示。
 """
 import json
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -47,24 +43,6 @@ EMPTY = {
     "loans.json": {"_note": "负债台账。余额由 基准本金+利率+月供 按月推演。"
                             "参照 demo/loans.json", "负债": []},
 }
-
-
-def _run(cmd, env=None):
-    return subprocess.call([sys.executable] + cmd, cwd=BASE, env=env)
-
-
-def try_demo():
-    import os
-    print("\n🎭 用演示数据跑一遍(虚构人物「张小满」一家,不碰你的任何文件)…\n")
-    env = {**os.environ, "PANORAMA_DEMO": "1"}
-    if _run(["rebuild_views.py"], env) != 0:
-        print("❌ 渲染失败"); return
-    out = DEMO / "panorama_poster.html"
-    print(f"\n✅ 完成。打开看看:\n   open {out}\n")
-    print("   demo/panorama_origin.html    经典配色")
-    print("   demo/panorama_terminal.html  交易终端(暗色)")
-    print("   demo/ips.html                投资政策声明")
-    print("\n看完想填自己的数据 → 再跑一次 python3 start.py 选 2。")
 
 
 def init_mine():
@@ -113,26 +91,11 @@ def init_mine():
 
 def main():
     print("=" * 66)
-    print("  资产全景 · 首次上手")
+    print("  资产全景 · 建数据")
     print("=" * 66)
-    has_own = (BASE / "accounts.csv").exists() or (BASE / "panorama.db").exists()
-    if has_own:
-        print("\n检测到已有数据。")
-    print("""
-  1) 先看效果      用演示数据跑一遍(虚构人物,不碰你的文件)
-  2) 录入我的数据  从演示配置起步,改成你自己的
-  3) 退出
-""")
-    try:
-        c = input("选择 [1/2/3]: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print(); return
-    if c == "1":
-        try_demo()
-    elif c == "2":
-        init_mine()
-    else:
-        print("bye")
+    if (BASE / "accounts.csv").exists() or (BASE / "panorama.db").exists():
+        print("\n检测到已有数据(已存在的文件不会被覆盖)。")
+    init_mine()
 
 
 if __name__ == "__main__":

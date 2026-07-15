@@ -213,9 +213,7 @@ def page(cf, msg="", rebuilt=False, reward=""):
  .primary{{background:#1554d1;color:#fff}} .ghost{{background:#eee;color:#333}}
  details summary{{cursor:pointer;color:#666;font-size:13px}} .ok{{background:#e7f7ec;color:#1a7f37;padding:10px 14px;border-radius:10px;margin-bottom:16px}}
  .hint{{font-size:12px;color:#999;margin-top:6px}}
-{OB_CSS}
 </style></head><body><div class="wrap">
-{onboard_hint("flow", onboard_state())}
 <h1>💰 现金流编辑器</h1>
  <div class="sub">定投额按真实结余自动算 · 月度支出 + 订阅月费一并计入固定支出</div>
 {banner}
@@ -1019,8 +1017,6 @@ def goal_page(msg="", rebuilt=False, reward=""):
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
     banner += reward or ""
-    ob = onboard_state()
-    hint = onboard_hint("goal", ob)
 
     conf_opts = "".join(f'<option>{c}</option>' for c in metrics.CONFIDENCE)
     ev_rows = ""
@@ -1050,7 +1046,6 @@ def goal_page(msg="", rebuilt=False, reward=""):
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>目标与大事</title>
 <style>{GOAL_CSS}</style></head><body>
 <div class="wrap">
-{hint}
 <h1>🎯 目标与重大事件</h1>
 <div class="sub">面板的导航中心 —— 没有它,系统只会告诉你「现在怎样」,不会告诉你「要去哪」。</div>
 {banner}
@@ -1379,7 +1374,11 @@ def holdings_page(msg="", rebuilt=False, reward=""):
     """持仓管理：自动估值持仓（数量变动自动记 holdings_history）+ 手动账户金额。
     引导第①步(还没有任何账户)时,「新增手动账户」自动展开并给常见账户示例——
     这个页面本来是为「改已有账户」设计的,新用户没有账户可改,会卡住。"""
-    new_acct = not onboard_state()["done"].get("acct")
+    import storage
+    try:
+        new_acct = not storage.load_table("accounts", [])   # 没有账户时,把「添加账户」表单默认展开
+    except Exception:
+        new_acct = False
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
     banner = f'<div class="ok">{esc(msg)}</div>' if msg else ""
     banner += reward or ""
@@ -1486,9 +1485,7 @@ def holdings_page(msg="", rebuilt=False, reward=""):
   table{{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
  }}
 
-{OB_CSS}
 </style></head><body><div class="wrap">
-{onboard_hint(onboard_state()["cur"] if onboard_state()["cur"] in ("acct","hold") else "", onboard_state())}
 <h1>📦 持仓管理</h1>
 <div class="sub">改数量/新增/删除 → 保存时自动往 holdings_history 记一笔买入/卖出（成交价空则取最新行情），
 浮盈成本口径不会跑偏 · 手动账户金额在下方更新（写 manual_values 并盖日期戳）· 保存后当晚 19:30 定时任务照常重估</div>
@@ -1601,256 +1598,11 @@ def parse_holdings_save(fields):
     return rows, prices, manual_updates, acct_new, note
 
 
-def _has_data():
-    """有没有真实数据?——判断是不是第一次用。演示模式永远算「有」。"""
-    import storage
-    if storage.DEMO:
-        return True
-    try:
-        if storage.load_table("accounts", []):
-            return True
-        if storage.load_table("holdings", []):
-            return True
-    except Exception:
-        pass
-    return False
-
-
-# ── 引导:四步,每步点亮一部分面板 ──────────────────────────────────
-# 设计原则(见 docs/2029-plan.md 与会话中的 grilling):
-#   · 不新建一套向导 UI —— 复用现有 Tab 的表单,只加「顺序 + 说明 + 下一步」
-#   · 每步保存后先给成果反馈(「净资产 30 万」),让填数据这件苦差事有即时回报
-#   · 没数据时全景 Tab 显示 demo(可点可下钻),但挂甩不掉的角标提醒「这不是你的数据」
-ONBOARD_STEPS = [
-    {"k": "acct", "tab": "hold", "n": "账户资产",
-     "why": "先把「你有多少钱」填对 —— 理财、存款、房产、日常现金。",
-     "get": "净资产、大类配置、资产全景",
-     "warn": "日常现金账户(工资进、开销出)一定要建 —— 它的月度余额变化是唯一诚实的储蓄信号。"},
-    {"k": "flow", "tab": "edit", "n": "收入支出",
-     "why": "你每月赚多少、花多少。",
-     "get": "储蓄率、现金流月账、财务自由推演",
-     "warn": "最容易犯的错:只填房贷房租,不填吃饭购物 → 储蓄率虚高一倍,后面所有推演跟着错。"},
-    {"k": "hold", "tab": "hold", "n": "持仓",
-     "why": "股票/ETF —— 能实时报价的那些。没有可以跳过。",
-     "get": "实时行情、持仓地图、浮盈、再平衡执行单",
-     "warn": ""},
-    {"k": "goal", "tab": "goal", "n": "目标与大事",
-     "why": "未来几年会改变你财务结构的事:换房、还清贷款、子女教育。",
-     "get": "未来大事时间轴、真·自由线、换房路线图",
-     "warn": "没有这一步,面板只会告诉你「现在怎样」,不会告诉你「要去哪」。"},
-]
-
-
-def onboard_state():
-    """→ {done:{k:bool}, cur:步骤k或None, all_done:bool}。判定只看「有没有实质内容」。"""
-    import storage
-    done = {}
-    try:
-        done["acct"] = bool(storage.load_table("accounts", []))
-    except Exception:
-        done["acct"] = False
-    try:
-        cf = storage.load_doc("cashflow", {})
-        done["flow"] = bool(cf.get("收入明细") and cf.get("月度收支"))
-    except Exception:
-        done["flow"] = False
-    try:
-        done["hold"] = bool(storage.load_table("holdings", []))
-    except Exception:
-        done["hold"] = False
-    try:
-        g = storage.load_doc("goal", {})
-        done["goal"] = bool(g.get("重大事件") or g.get("目标态"))
-    except Exception:
-        done["goal"] = False
-    cur = next((s["k"] for s in ONBOARD_STEPS if not done.get(s["k"])), None)
-    return {"done": done, "cur": cur, "all_done": cur is None}
-
-
-def onboard_bar(state, skipped=False):
-    """壳页顶部进度条。全部完成或用户点了跳过 → 不显示(引导退化为健康检查)。"""
-    if skipped or state["all_done"]:
-        return ""
-    cells = []
-    for i, s in enumerate(ONBOARD_STEPS):
-        k = s["k"]
-        if state["done"].get(k):
-            mark, cls = "✅", "ok"
-        elif k == state["cur"]:
-            mark, cls = "◉", "cur"
-        else:
-            mark, cls = "⬜", ""
-        cells.append(f'<button class="ob-step {cls}" data-tab="{s["tab"]}" data-step="{k}">'
-                     f'{mark} <b>{["①","②","③","④"][i]}</b> {s["n"]}</button>')
-    return ('<div id="obbar"><span class="ob-t">开始使用</span>'
-            + '<span class="ob-sep">—</span>'.join(cells)
-            + '<a class="ob-skip" href="/skip-onboard">跳过引导</a></div>')
-
-
-def onboard_hint(step_key, state):
-    """插在各 Tab 顶部的引导说明条。不在引导中 → 空。"""
-    if state["all_done"] or state["cur"] != step_key:
-        return ""
-    s = next((x for x in ONBOARD_STEPS if x["k"] == step_key), None)
-    if not s:
-        return ""
-    i = [x["k"] for x in ONBOARD_STEPS].index(step_key)
-    nxt = ONBOARD_STEPS[i + 1]["n"] if i + 1 < len(ONBOARD_STEPS) else None
-    warn = f'<div class="ob-warn">⚠ {esc(s["warn"])}</div>' if s["warn"] else ""
-    return f'''<div class="ob-hint">
-  <div class="ob-hd">第{["①","②","③","④"][i]}步 · {esc(s["n"])}</div>
-  <div class="ob-why">{esc(s["why"])}</div>
-  <div class="ob-get">填完你会解锁:<b>{esc(s["get"])}</b></div>
-  {warn}
-  <div class="ob-nx">保存后{"自动进入「"+esc(nxt)+"」" if nxt else "引导结束,进入完整面板"}</div>
-</div>'''
-
-
-def onboard_reward(step_key):
-    """保存后的即时成果:「你刚解锁了什么」——填数据这件苦差事必须有回报,
-    否则用户填完第一步会觉得「什么都没发生」然后流失。
-    返回一段追加到保存提示后面的文案(不在引导中 → 空)。"""
-    st = onboard_state()
-    if st["all_done"] and step_key != "goal":
-        # 全部填完后不再报喜(除了最后一步的收尾)
-        pass
-    try:
-        from portfolio_tracker import compute
-        R = compute()
-        nw, fin = R["networth"], R["financial"]
-    except Exception:
-        return ""
-    parts = []
-    if step_key == "acct" and nw:
-        parts.append(f"你的净资产:<b>¥{nw/1e4:,.1f}万</b>")
-        parts.append("大类配置和资产全景已点亮")
-    elif step_key == "flow":
-        try:
-            import cashflow_income as inc
-            cf = storage.load_doc("cashflow", {})
-            items = inc.income_items_net(cf)
-            income = sum(i["金额"] for i in items)
-            out = subs_mod.cashflow_fixed_out(cf, {"USD": 7.0, "HKD": 0.9, "CNY": 1.0})
-            net = income - out
-            if income:
-                parts.append(f"储蓄率:<b>{net/income*100:.0f}%</b>(月结余 ¥{net:,.0f})")
-                parts.append("现金流月账 + 财务自由推演已点亮")
-        except Exception:
-            pass
-    elif step_key == "hold" and fin:
-        parts.append(f"金融资产:<b>¥{fin/1e4:,.1f}万</b> · 实时行情已接上")
-        parts.append("持仓地图 / 浮盈 / 再平衡执行单已点亮")
-    elif step_key == "goal":
-        try:
-            g = storage.load_doc("goal", {})
-            if g.get("重大事件"):
-                parts.append(f"{len(g['重大事件'])} 个重大事件已进入时间轴")
-                parts.append("真·自由线 + 未来大事已点亮")
-        except Exception:
-            pass
-    if not parts:
-        return ""
-    nxt = ""
-    ks = [s["k"] for s in ONBOARD_STEPS]
-    if step_key in ks:
-        i = ks.index(step_key)
-        if i + 1 < len(ONBOARD_STEPS) and not st["done"].get(ONBOARD_STEPS[i + 1]["k"]):
-            nxt = f'<br>👉 下一步:<b>{ONBOARD_STEPS[i+1]["n"]}</b>'
-        elif st["all_done"]:
-            nxt = "<br>🎉 引导完成 —— 面板已全部点亮,进度条会消失。"
-    return f'<div class="ob-reward">🎁 解锁:{" · ".join(parts)}{nxt}</div>'
-
-
-OB_CSS = """
-.ob-reward{border:3px solid #1baf7a;background:#e7f7ec;padding:11px 14px;margin-top:10px;
-  font-weight:800;font-size:13.5px;line-height:1.7;border-radius:0}
-.ob-reward b{color:#0d7a52;font-size:15px}
-#obbar{display:flex;align-items:center;gap:0;flex-wrap:wrap;padding:9px 14px;
-  background:#eda100;border-bottom:3px solid #111;font-weight:800;font-size:12.5px}
-#obbar .ob-t{font-weight:900;letter-spacing:.1em;margin-right:12px}
-#obbar .ob-sep{opacity:.45;margin:0 2px}
-.ob-step{border:2px solid #111;background:#fff;padding:4px 10px;font-weight:800;
-  font-size:12.5px;cursor:pointer;font-family:inherit}
-.ob-step.cur{background:#111;color:#f4f1ea}
-.ob-step.ok{background:#1baf7a;color:#fff}
-.ob-skip{margin-left:auto;font-weight:800;color:#111;opacity:.7;font-size:12px}
-.ob-hint{border:3px solid #111;background:#fffbe9;box-shadow:5px 5px 0 #eda100;
-  padding:13px 16px;margin:0 0 16px}
-.ob-hint .ob-hd{font-weight:900;font-size:15px;margin-bottom:4px}
-.ob-hint .ob-why{font-weight:700;font-size:13.5px}
-.ob-hint .ob-get{font-weight:700;font-size:13px;margin-top:5px}
-.ob-hint .ob-warn{border:2px dashed #e34948;padding:7px 10px;margin-top:8px;
-  font-weight:800;font-size:12.5px}
-.ob-hint .ob-nx{font-size:11.5px;font-weight:700;opacity:.6;margin-top:7px}
-"""
-
-
-def welcome_page():
-    """空数据时的上手页:一片空白的面板毫无意义,给两条明确的路。"""
-    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>资产全景 · 上手</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-<style>
- *{{margin:0;padding:0;box-sizing:border-box}}
- body{{background:#f4f1ea;color:#111;font:15px/1.6 "Helvetica Neue","PingFang SC",system-ui,sans-serif;
-   max-width:820px;margin:0 auto;padding:48px 26px}}
- h1{{font-size:36px;font-weight:900;border-bottom:5px solid #111;padding-bottom:12px;margin-bottom:8px}}
- .sub{{font-weight:700;opacity:.65;margin-bottom:30px}}
- .card{{border:3px solid #111;background:#fff;box-shadow:6px 6px 0 #111;padding:20px 24px;margin-bottom:22px}}
- .card h2{{font-size:19px;font-weight:900;margin-bottom:6px}}
- .card p{{font-weight:600;font-size:14px;margin-bottom:10px}}
- .card.hero{{box-shadow:6px 6px 0 #2a78d6}}
- code{{background:#111;color:#f4f1ea;padding:2px 8px;font-weight:800;font-size:13px;display:inline-block;margin:3px 0}}
- ol{{margin:8px 0 0 20px;font-weight:700;font-size:14px}} ol li{{margin:5px 0}}
- .warn{{border:2.5px dashed #e34948;padding:10px 13px;margin-top:12px;font-weight:800;font-size:13px}}
-</style></head><body>
-<h1>资产全景</h1>
-<div class="sub">还没有数据 —— 选一条路开始。</div>
-
-<div class="card hero">
-  <h2>① 先看效果(1 分钟)</h2>
-  <p>用演示数据(虚构人物「张小满」一家)跑一遍,看看这东西长什么样、值不值得你花时间填。</p>
-  <code>PANORAMA_DEMO=1 python3 rebuild_views.py &amp;&amp; open demo/panorama_poster.html</code>
-  <p style="margin-top:8px">或者交互式:<code>python3 start.py</code> → 选 1</p>
-</div>
-
-<div class="card">
-  <h2>② 录入我的数据</h2>
-  <p>从演示配置起步——<b>它就是最好的填写参照</b>(每个字段该填什么样,照着改)。</p>
-  <code>python3 start.py</code> → 选 2
-  <ol>
-    <li><b>accounts.csv + manual_values.json</b> —— 先把「你有多少钱」填对,这步做完就有净资产和大类配置了</li>
-    <li><b>cashflow.json</b> —— 收入 + 支出</li>
-    <li><b>holdings.csv</b> —— 有股票/ETF 才需要</li>
-    <li><b>goal.json</b> —— 你未来几年的大事(换房/还清贷款/子女教育)。没有它,面板只会说「现在怎样」,不会说「要去哪」</li>
-    <li>订阅/保险/负债按需填,不填不影响主流程</li>
-  </ol>
-  <div class="warn">⚠ 最容易犯的错:月度支出只填房贷房租、不填吃饭购物 —— 储蓄率会虚高一倍,
-  后面所有的财务自由推演都跟着错。</div>
-</div>
-
-<div class="card">
-  <h2>③ 填完之后</h2>
-  <p>刷新本页即可进入面板;或在终端跑:</p>
-  <code>python3 portfolio_tracker.py</code> 终端看数字<br>
-  <code>python3 rebuild_views.py</code> 生成全景面板
-</div>
-</body></html>"""
-
-
-def shell(default="origin", skin="", ob=None, ob_skipped=False):
-    """外壳页：顶部标签栏 + iframe。持仓全景 / 现金流编辑 一页切换。
-    skin='poster' 时壳页换新粗野主义外观(选中「色块海报」主题即全面板跟随)。
-    ob: onboard_state() —— 引导中会多一条进度条;第①步没填完时全景 Tab 预览 demo。"""
+def shell(default="origin", skin=""):
+    """外壳页：顶部标签栏 + iframe，各功能页一页切换。
+    skin='poster' 时壳页换新粗野主义外观(选中「色块海报」主题即全面板跟随)。"""
     if default not in THEMES:
         default = next(iter(THEMES))
-    ob = ob or onboard_state()
-    show_ob = not ob_skipped and not ob["all_done"]
-    preview = not ob["done"].get("acct")      # 还没填账户 → 全景位先给 demo 看(可点可下钻)
-    ob_bar = onboard_bar(ob, ob_skipped)
-    first_tab = next((s["tab"] for s in ONBOARD_STEPS if s["k"] == ob["cur"]), "view") \
-        if show_ob else "view"
     opts = "".join(f'<option value="{k}"{" selected" if k==default else ""}>{name}</option>'
                    for k, (name, _) in THEMES.items())
     # 只有一个主题时不显示下拉
@@ -1877,31 +1629,15 @@ def shell(default="origin", skin="", ob=None, ob_skipped=False):
  .skin-poster select{{border:2px solid #111;border-radius:0;font-weight:800;background:#f4f1ea}}
  .skin-poster #rebuild{{background:#2a78d6;border:2px solid #f4f1ea;border-radius:0;font-weight:800}}
  .skin-poster iframe{{background:#f4f1ea}}
- /* 演示预览:页面保持原色(降饱和会毁掉配色,而配色正是要展示的东西),
-    只靠角标提醒「这是样板间,不是你家」 */
- #wrap{{position:relative}}
- #pvtag{{display:none;position:absolute;right:18px;top:16px;z-index:20;background:#111;color:#f4f1ea;
-   border:3px solid #eda100;padding:10px 14px;font-weight:900;font-size:13px;line-height:1.5;
-   box-shadow:5px 5px 0 rgba(0,0,0,.35);max-width:260px}}
- #wrap.preview #pvtag{{display:block}}
- #pvtag b{{color:#eda100}}
- #pvtag button{{margin-top:8px;width:100%;border:2px solid #eda100;background:#eda100;color:#111;
-   font-weight:900;padding:6px;cursor:pointer;font-family:inherit;font-size:12.5px}}
- {OB_CSS}
- /* 手机:角标压在右上角会挡住卡片 → 改为贴底通栏,不遮内容 */
+ /* 手机端适配 */
  @media(max-width:720px){{
    nav{{gap:6px;padding:6px 10px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}}
    .tab{{font-size:13px;padding:7px 10px;white-space:nowrap;flex:none}}
    .right{{position:sticky;right:0;background:inherit}}
-   #pvtag{{position:fixed;left:8px;right:8px;top:auto;bottom:8px;max-width:none;
-     font-size:12.5px}}
-   #obbar{{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}}
-   .ob-step{{white-space:nowrap;flex:none}}
-   .ob-skip{{position:sticky;right:0;background:#eda100;padding-left:8px}}
  }}
 </style></head><body class="{skin_cls}">
 <nav>
- <button class="tab active" data-tab="view">📊 持仓全景{'（预览样板）' if preview else ''}</button>
+ <button class="tab active" data-tab="view">📊 持仓全景</button>
  <button class="tab" data-tab="hold">📦 持仓管理</button>
  <button class="tab" data-tab="edit">💰 现金流编辑</button>
  <button class="tab" data-tab="goal">🎯 目标与大事</button>
@@ -1914,19 +1650,14 @@ def shell(default="origin", skin="", ob=None, ob_skipped=False):
   <button id="rebuild" title="拉最新行情重算并刷新全景">↻ 重新估值</button>
  </div>
 </nav>
-{ob_bar}
-<div id="wrap" class="{'preview' if preview else ''}">
-  <div id="pvtag">🎭 <b>预览样板间</b><br>这是虚构人物「张小满」一家的数据,<b>不是你的</b>。<br>
-    可以随便点、下钻、看每张卡。<button id="pvgo">开始填我的数据 →</button></div>
-  <iframe id="frame" src="{'/demo-panorama' if preview else '/panorama?theme=' + default}"></iframe>
+<div id="wrap">
+  <iframe id="frame" src="/panorama?theme={default}"></iframe>
 </div>
 <script>
  const frame=document.getElementById('frame'), themeSel=document.getElementById('theme'), DEF='{default}';
- const WRAP=document.getElementById('wrap'), PREVIEW={'true' if preview else 'false'};
- let tab='{first_tab}';
+ let tab='view';
  function theme(){{ return themeSel ? themeSel.value : DEF; }}
- function srcFor(){{ return tab==='view' ? (PREVIEW ? '/demo-panorama?_='+Date.now()
-                                                    : '/panorama?theme='+theme()+'&_='+Date.now())
+ function srcFor(){{ return tab==='view' ? '/panorama?theme='+theme()+'&_='+Date.now()
                                           : tab==='subs' ? '/subs?_='+Date.now()
                                           : tab==='recon' ? '/recon?_='+Date.now()
                                           : tab==='ins' ? '/insurance?_='+Date.now()
@@ -1936,12 +1667,8 @@ def shell(default="origin", skin="", ob=None, ob_skipped=False):
                                           : '/edit?_='+Date.now(); }}
  function show(t){{ tab=t;
    document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-   WRAP.classList.toggle('preview', PREVIEW && t==='view');   // 角标只在预览全景时出现
    frame.src=srcFor(); }}
  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>show(b.dataset.tab));
- document.querySelectorAll('.ob-step').forEach(b=>b.onclick=()=>show(b.dataset.tab));
- const pvgo=document.getElementById('pvgo');
- if(pvgo) pvgo.onclick=()=>show('hold');     // 「开始填我的数据」→ 第①步(账户)
  show(tab);
  // 主题即全面板皮肤:写 cookie 让所有管理页/壳页跟随(暂只有海报有皮肤)
  if(themeSel) themeSel.onchange=()=>{{
@@ -1991,25 +1718,7 @@ class Handler(BaseHTTPRequestHandler):
         path, q = route.path, parse_qs(route.query)
         if path in ("/", "/index.html"):
             skin = self._skin()
-            skipped = "ob_skip=1" in (self.headers.get("Cookie") or "")
-            self._send(shell(default="poster" if skin == "poster" else "origin", skin=skin,
-                             ob=onboard_state(), ob_skipped=skipped))
-        elif path == "/skip-onboard":
-            self.send_response(302)
-            self.send_header("Set-Cookie", "ob_skip=1;path=/;max-age=31536000")
-            self.send_header("Location", "/")
-            self.end_headers()
-        elif path == "/demo-panorama":
-            # 引导期的样板间:渲染演示数据的海报页(缺就现渲一次),整页可点可下钻
-            fp = BASE / "demo" / "panorama_poster.html"
-            if not fp.exists():
-                import os
-                subprocess.run([sys.executable, str(BASE / "rebuild_views.py")], cwd=BASE,
-                               env={**os.environ, "PANORAMA_DEMO": "1"},
-                               capture_output=True, timeout=180)
-            self._send(fp.read_bytes() if fp.exists()
-                       else b'<body style="font-family:sans-serif;padding:40px">'
-                            b'\xe6\xbc\x94\xe7\xa4\xba\xe9\xa1\xb5\xe7\x94\x9f\xe6\x88\x90\xe4\xb8\xad\xe2\x80\xa6</body>')
+            self._send(shell(default="poster" if skin == "poster" else "origin", skin=skin))
         elif path == "/goal":
             self._send(goal_page())
         elif path == "/edit":
@@ -2046,18 +1755,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
-        if route == "/sketch-assets":
-            # 资产板块「换成我的」:五大类约数 → 速写账户,替换样板(引导 v2)
-            import sketch
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                vals = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
-            except json.JSONDecodeError:
-                vals = {}
-            sketch.apply_asset_sketch(vals)
-            self._rebuild_views()
-            self._send(b'{"ok":true}')
-            return
         if route == "/save-goal":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
@@ -2068,7 +1765,7 @@ class Handler(BaseHTTPRequestHandler):
                 ok = self._rebuild_views()
                 msg += " · 已刷新全景，正在跳转…" if ok else " · ⚠️ 刷新失败，仅保存成功"
                 rebuilt = ok
-            self._send(goal_page(msg, rebuilt=rebuilt, reward=onboard_reward("goal")))
+            self._send(goal_page(msg, rebuilt=rebuilt))
         elif route == "/save":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
@@ -2080,7 +1777,7 @@ class Handler(BaseHTTPRequestHandler):
                 ok = self._rebuild_views()
                 msg += " · 已刷新全景(行情走当日缓存)，正在跳转…" if ok else " · ⚠️ 刷新失败(行情/网络)，仅保存成功"
                 rebuilt = ok
-            self._send(page(cf, msg, rebuilt=rebuilt, reward=onboard_reward("flow")))
+            self._send(page(cf, msg, rebuilt=rebuilt))
         elif route == "/subs/save":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
@@ -2134,16 +1831,11 @@ class Handler(BaseHTTPRequestHandler):
         elif route == "/holdings/save":
             length = int(self.headers.get("Content-Length", 0))
             fields = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
-            _st_before = onboard_state()      # 保存前的状态:决定这次算完成了哪一步
             rows, prices, manual_updates, acct_new, note = parse_holdings_save(fields)
             records, warns = hold_mod.save_holdings(rows, prices, note)
             changed = hold_mod.save_manual(manual_updates)
             added = hold_mod.add_account(*acct_new) if acct_new[0].strip() else False
             msg = "✅ 已保存持仓管理（上一版已自动备份）"
-            # 这一页同时承载第①步(账户)与第③步(持仓):按**用户这次提交了什么**判定,
-            # 而不是按状态——否则「已有账户后再加一个账户」会被误报成第③步
-            _step = "hold" if rows else "acct"
-            reward = "" if _st_before["all_done"] else onboard_reward(_step)
             if records:
                 brief = "、".join(f'{r["动作"]} {r["名称"]} {r["数量"]}@{r["成交价"] or "?"}'
                                   for r in records[:4])
@@ -2159,7 +1851,7 @@ class Handler(BaseHTTPRequestHandler):
                 ok = self._rebuild_views()
                 msg += " · 已刷新全景(行情走当日缓存)，正在跳转…" if ok else " · ⚠️ 刷新失败，仅保存成功"
                 rebuilt = ok
-            self._send(holdings_page(msg, rebuilt=rebuilt, reward=reward))
+            self._send(holdings_page(msg, rebuilt=rebuilt))
         elif route == "/recon/import":
             length = int(self.headers.get("Content-Length", 0))
             try:
