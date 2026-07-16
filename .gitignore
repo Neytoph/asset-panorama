@@ -32,6 +32,8 @@ mitm.log
 # ── 含个人财务信息的文档 ──
 docs/portfolio-snapshot.md
 docs/strategy-log.md
+docs/2029-plan.md
+docs/annual-review-*.md
 
 # ── IDE / 本地 ──
 .claude/
