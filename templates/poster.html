@@ -245,12 +245,14 @@
     background: #fff; color: var(--ink); cursor: pointer; }
   .trendbar button.on { background: var(--ink); color: var(--paper); }
 
-  /* 字母章（订阅图标） */
+  /* 订阅图标：有 favicon 无边框；字母章轻描边 */
   .chip { display: inline-flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; border: 2px solid var(--ink); background: var(--paper);
+    width: 20px; height: 20px; border: none; border-radius: 5px; background: transparent;
     color: var(--ink); font-size: 10px; font-weight: 900; flex: none; overflow: hidden; }
-  .chip img { width: 100%; height: 100%; object-fit: contain; }
-  .chip.s { width: 14px; height: 14px; font-size: 8px; border-width: 1.5px; }
+  .chip:not(:has(img)) { border: 1.5px solid #d4cfc3; background: var(--paper); }
+  .chip img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; }
+  .chip.s { width: 14px; height: 14px; font-size: 8px; border-radius: 3px; }
+  .chip.s:not(:has(img)) { border-width: 1px; }
 
   /* 扣费日历 */
   .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; font-size: 10px; }
