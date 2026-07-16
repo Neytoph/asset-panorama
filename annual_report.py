@@ -115,11 +115,12 @@ def _life_goals_section(D, year, partial):
                 f"▸ 去年的回答（annual-review-{year - 1}.md）</summary>"
                 f"<pre style='white-space:pre-wrap;font:12.5px/1.6 inherit;border:2.5px dashed #111;"
                 f"padding:10px 14px;margin-top:8px'>{_html.escape(prev_f.read_text(encoding='utf-8'))}</pre></details>")
-    status = ("✓ 今年已作答" if cur_f.exists()
-              else f"今年的回答写入 <b>docs/annual-review-{year}.md</b>（每目标一节,手写或让 agent 代笔访谈皆可）")
+    status = ("✓ 今年访谈已完成" if cur_f.exists()
+              else f"年末对 agent 说「做年度访谈」——它拿上面的问题问你,答案由它写入 <b>docs/annual-review-{year}.md</b>")
     return (f"\n<h2>00 人生目标复盘{'（至今）' if partial else ''}</h2>"
             f"<div class='tri'>{blocks}</div>"
-            f"<p class='note'>财务部分自动生成;问题只提不打分——工具是仪式的主持人,不是人生的记分员。{status}</p>{prev}")
+            f"<p class='note'>财务部分自动生成;年度问题是 agent 访谈的台本,不是要你手填的表格——"
+            f"工具是仪式的主持人,不是人生的记分员。{status}</p>{prev}")
 
 
 def build(year=None):

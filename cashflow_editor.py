@@ -1042,19 +1042,6 @@ def goal_page(msg="", rebuilt=False, reward=""):
 
     child = next((e for e in events if e.get("类型") == "育儿"), {})
     crng = child.get("月额区间") or {}
-
-    lg_rows = ""
-    for lg in g.get("人生目标") or []:
-        lg_rows += f'''<div class="ev">
-  <div class="g3">
-   <div><label>目标名称</label><input name="lg_name" value="{esc(lg.get("名称",""))}"></div>
-   <div style="grid-column:span 2"><label>叙事(一句话:这个目标是什么)</label><input name="lg_story" value="{esc(lg.get("叙事",""))}"></div>
-   <div style="grid-column:span 3"><label>财务关联(逗号分隔,如 换房,育儿储备,保险缺口)</label><input name="lg_links" value="{esc(",".join(lg.get("关联") or []))}"></div>
-   <div style="grid-column:span 3"><label>年度问题(每行一个,年报里只提问不打分)</label><textarea name="lg_qs" rows="3">{esc(chr(10).join(lg.get("年度问题") or []))}</textarea></div>
-  </div>
-  <div class="row"><span class="hint">财务部分年报自动汇总;答案写 docs/annual-review-年份.md</span>
-   <button type="button" class="del" onclick="this.closest('.ev').remove()">✕ 删除</button></div>
- </div>'''
     return f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>目标与大事</title>
 <style>{GOAL_CSS}</style></head><body>
@@ -1063,15 +1050,6 @@ def goal_page(msg="", rebuilt=False, reward=""):
 <div class="sub">面板的导航中心 —— 没有它,系统只会告诉你「现在怎样」,不会告诉你「要去哪」。</div>
 {banner}
 <form method="post" action="/save-goal">
-
-<div class="card">
-  <h2>人生目标(为什么)</h2>
-  <div class="tip">整个面板的序言:下面每个财务目标都应能溯源到这里的某一条。
-   <b>边界:</b>工具只管目标的财务基座 + 年度提问存档,不追踪、不打分——它是仪式的主持人,不是人生的记分员。
-   序言展示在 IPS 宪法页,年度复盘在年报。</div>
-  <div id="lgs">{lg_rows}</div>
-  <button type="button" class="add" onclick="addLg()">+ 加一个人生目标</button>
-</div>
 
 <div class="card">
   <h2>财务自由口径</h2>
@@ -1130,18 +1108,6 @@ def goal_page(msg="", rebuilt=False, reward=""):
 </form>
 </div>
 <script>
-function addLg(){{
-  const d=document.createElement('div'); d.className='ev';
-  d.innerHTML=`<div class="g3">
-   <div><label>目标名称</label><input name="lg_name"></div>
-   <div style="grid-column:span 2"><label>叙事(一句话:这个目标是什么)</label><input name="lg_story"></div>
-   <div style="grid-column:span 3"><label>财务关联(逗号分隔,如 换房,育儿储备,保险缺口)</label><input name="lg_links"></div>
-   <div style="grid-column:span 3"><label>年度问题(每行一个,年报里只提问不打分)</label><textarea name="lg_qs" rows="3"></textarea></div>
-  </div>
-  <div class="row"><span class="hint">财务部分年报自动汇总;答案写 docs/annual-review-年份.md</span>
-   <button type="button" class="del" onclick="this.closest('.ev').remove()">✕ 删除</button></div>`;
-  document.getElementById('lgs').appendChild(d);
-}}
 function addEv(){{
   const d=document.createElement('div'); d.className='ev';
   d.innerHTML=`<div class="g4">
@@ -1239,23 +1205,7 @@ def parse_goal(form):
                        "月额区间": {"lo": c_lo, "mid": (c_lo + c_hi) / 2, "hi": c_hi},
                        "说明": "不计入 FI 线(会结束),但结束前必须供 → 育儿储备"})
     g["重大事件"] = events
-
-    # 人生目标:名称为空的行整条丢弃;问题按行拆、关联按逗号拆
-    lg_names = form.get("lg_name", [])
-    goals = []
-    for i, nm in enumerate(lg_names):
-        nm = (nm or "").strip()
-        if not nm:
-            continue
-        def s(k):
-            v = form.get(k, [""] * len(lg_names))
-            return (v[i] if i < len(v) else "") or ""
-        goals.append({
-            "名称": nm, "叙事": s("lg_story").strip(),
-            "关联": [x.strip() for x in s("lg_links").replace("，", ",").split(",") if x.strip()],
-            "年度问题": [q.strip() for q in s("lg_qs").splitlines() if q.strip()],
-        })
-    g["人生目标"] = goals
+    # 「人生目标」不走表单:几年才改一次,由 agent 直接改 goal.json(此处不触碰,保存时自然保留)
     return g
 
 
