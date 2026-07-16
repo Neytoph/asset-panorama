@@ -372,6 +372,17 @@ def test_attribution():
     assert a["deltaNW"] == a["savings"] + a["invest"] + a["property"]
     assert a["property"] == 20000
     assert attribution(hist[:1], cfh) is None
+    # 逐月切片:每月留月末行、相对上月末闭合;首个快照月无基线不出结果
+    from metrics import attribution_monthly
+    hist2 = hist + [{"date": "2026-07-31", "总净资产": "8700000", "金融资产": "4050000", "房产": "4650000"},
+                    {"date": "2026-08-15", "总净资产": "8750000", "金融资产": "4100000", "房产": "4650000"}]
+    m = attribution_monthly(hist2, cfh + [{"月份": "2026-08", "净结余": "30000", "已对账": "是"}])
+    assert [x["month"] for x in m] == ["2026-07", "2026-08"]
+    assert m[0]["savings"] == 32732 and m[0]["draft"] is True      # 7月取月末行(31日)
+    assert m[0]["property"] == 50000 and m[1]["draft"] is False
+    for x in m:
+        assert x["deltaNW"] == x["savings"] + x["invest"] + x["property"]
+    assert attribution_monthly(hist[:1], cfh) is None
 
 
 def test_fi_plan():

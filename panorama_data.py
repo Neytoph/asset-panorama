@@ -233,6 +233,7 @@ def collect(persist_history=True, fetch_klines=True):
     perf["byHolding"] = perf["byHolding"][:10]
     cfh_rows = read_csv("cashflow_history.csv", [])
     attrib = metrics.attribution(history, cfh_rows)
+    attrib_m = metrics.attribution_monthly(history, cfh_rows)
 
     # ── 2029 目标态导航(见 docs/2029-plan.md):换房是未来数年量级最大的一次财务动作 ──
     goal = load_json("goal.json")
@@ -426,7 +427,8 @@ def collect(persist_history=True, fetch_klines=True):
         "broad": round(broad), "concentrated": round(concentrated),
         "positions": positions[:12],
         "pnlTotal": round(pnl_total),
-        "perf": perf, "attribution": attrib, "fi": fi, "rebalance": reb,
+        "perf": perf, "attribution": attrib, "attributionMonthly": attrib_m,
+        "fi": fi, "rebalance": reb,
         "stress": stress, "insGap": ins_gap, "policyLoan": round(policy_loan),
         "demo": storage.DEMO,     # 演示模式 → 面板挂「虚构人物」横幅,别被当成真人数据
         "goal": goal, "reloc": reloc, "trueSavings": real_sav,

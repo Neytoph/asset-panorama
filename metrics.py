@@ -150,6 +150,47 @@ def attribution(history_rows, cashflow_rows):
             "property": round(d_prop), "draft": draft}
 
 
+def attribution_monthly(history_rows, cashflow_rows, months=8):
+    """按月切片的增长归因(口径同 attribution,逐月闭合)。
+    每月最后一行为月末快照,ΔNW 相对上月末;储蓄取当月净结余(草稿月标记)。
+    首个有快照的月份没有上月末基线,不出结果。"""
+    rows = [r for r in history_rows if r.get("date")]
+    if len(rows) < 2:
+        return None
+
+    def num(r, k):
+        try:
+            return float(r.get(k) or 0)
+        except ValueError:
+            return 0.0
+    ends = {}
+    for r in rows:                       # 升序追加,后写覆盖 → 每月留月末行
+        ends[r["date"][:7]] = r
+    keys = sorted(ends)
+    sav, draft = {}, {}
+    for r in cashflow_rows:
+        m = (r.get("月份") or "").strip()
+        if not m:
+            continue
+        try:
+            sav[m] = sav.get(m, 0.0) + float(r.get("净结余") or 0)
+        except ValueError:
+            continue
+        if (r.get("已对账") or "").strip() != "是":
+            draft[m] = True
+    out = []
+    for prev, cur in zip(keys, keys[1:]):
+        a, b = ends[prev], ends[cur]
+        d_nw = round(num(b, "总净资产") - num(a, "总净资产"))
+        s = round(sav.get(cur, 0.0))
+        d_prop = round(num(b, "房产") - num(a, "房产"))
+        # 投资项取残差:取整后三块仍精确闭合(ΔNW=Δ金融+Δ房产 按 history 构造成立)
+        out.append({"month": cur, "deltaNW": d_nw, "savings": s,
+                    "invest": d_nw - s - d_prop, "property": d_prop,
+                    "draft": bool(draft.get(cur))})
+    return out[-months:] or None
+
+
 # ── 财务自由推演 ───────────────────────────────────────────────────
 
 def _years_to(target, start, monthly_saving, r):

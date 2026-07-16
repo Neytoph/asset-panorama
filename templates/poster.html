@@ -119,6 +119,19 @@
     border-top: 3px solid var(--ink); border-bottom-width: 2px; padding-top: 10px; }
   .blk.lead .sec-h.sub-h { background: none; color: inherit; }
 
+  /* 换房倒计时横幅:硬死线常驻首屏一条细带,完整路线图收进底部抽屉区 */
+  .reloc-banner { margin-top: 18px; padding: 9px 18px; display: flex; gap: 18px;
+    align-items: baseline; flex-wrap: wrap; font-weight: 800; font-size: 13.5px; }
+  .reloc-banner .n { font-size: 22px; font-weight: 900; }
+  .reloc-banner a { color: inherit; margin-left: auto; font-size: 11px;
+    letter-spacing: .12em; font-weight: 900; white-space: nowrap; }
+
+  /* 归因主卡:堆叠柱图例 */
+  .att-leg { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px;
+    font-weight: 800; letter-spacing: .08em; margin-top: 8px; }
+  .att-leg i { display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--ink); vertical-align: -2px; margin-right: 5px; }
+
   /* 应急参考区:出事才看的手册,视觉降一级 */
   .ref-head { margin-top: 26px; font-weight: 900; font-size: 11px; letter-spacing: .22em; opacity: .55; }
   .ref-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 10px; }
@@ -309,15 +322,7 @@
   </div>
 </div>
 
-<section class="zone z-goal">
-<div class="zone-head"><span class="zone-kick"><span class="no">00</span>未来大事 LIFE EVENTS</span><span class="zone-stat" id="zs-goal"></span></div>
-<div class="blk lead">
-  <div class="sec-h">换房路线图 <small id="reloc-sub">卖出投资房 → 学位房 · 净释放进金融资产</small></div>
-  <div class="pad" id="reloc"></div>
-  <div class="sec-h sub-h">事件时间轴 <small id="tl-sub">会改变月储蓄/资产的事件 · 确信度:合同/计划/猜测</small></div>
-  <div class="pad" id="timeline"></div>
-</div>
-</section>
+<div class="blk reloc-banner" id="reloc-banner" style="display:none"></div>
 
 <section class="zone z-asset">
 <div class="zone-head"><span class="zone-kick"><span class="no">01</span>资产 ASSETS</span><span class="zone-stat" id="zs-asset"></span></div>
@@ -382,18 +387,14 @@
   </div>
 </div>
 
-<div class="main3">
+<div class="main2b">
+  <div class="blk lead">
+    <div class="sec-h">增长归因 <small id="attrib-sub">净资产为什么变 · 储蓄纪律 vs 市场 vs 房产 · 逐月闭合</small></div>
+    <div class="pad" id="attrib"></div>
+  </div>
   <div class="blk">
     <div class="sec-h">真实收益 <small>资金加权 · 净投入口径</small></div>
     <div class="pad" id="perf"></div>
-  </div>
-  <div class="blk lead">
-    <div class="sec-h">财务自由进度 <small id="fi-sub">FI 线 = 年固定支出 ÷ 提取率</small></div>
-    <div class="pad" id="fi"></div>
-  </div>
-  <div class="blk">
-    <div class="sec-h">再平衡执行单 <small>5/25 规则 · 增量优先</small></div>
-    <div class="pad" id="rebalance"></div>
   </div>
 </div>
 
@@ -432,8 +433,28 @@
 </div>
 </section>
 
+<section class="zone z-goal">
+<div class="zone-head"><span class="zone-kick"><span class="no">04</span>换房与推演 PLANNING</span><span class="zone-stat" id="zs-goal"></span></div>
+<div class="blk lead" id="reloc-full">
+  <div class="sec-h">换房路线图 <small id="reloc-sub">卖出投资房 → 学位房 · 净释放进金融资产</small></div>
+  <div class="pad" id="reloc"></div>
+  <div class="sec-h sub-h">事件时间轴 <small id="tl-sub">会改变月储蓄/资产的事件 · 确信度:合同/计划/猜测</small></div>
+  <div class="pad" id="timeline"></div>
+</div>
+<div class="main2b">
+  <div class="blk lead">
+    <div class="sec-h">财务自由进度 <small id="fi-sub">FI 线 = 年固定支出 ÷ 提取率</small></div>
+    <div class="pad" id="fi"></div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">再平衡执行单 <small>5/25 规则 · 增量优先</small></div>
+    <div class="pad" id="rebalance"></div>
+  </div>
+</div>
+</section>
+
 <section class="zone z-risk">
-<div class="zone-head"><span class="zone-kick"><span class="no">04</span>风险与体质 RISK</span><span class="zone-stat" id="zs-risk"></span></div>
+<div class="zone-head"><span class="zone-kick"><span class="no">05</span>风险与体质 RISK</span><span class="zone-stat" id="zs-risk"></span></div>
 <div class="main3">
   <div class="blk lead">
     <div class="sec-h">财务体质 <small>杠杆与流动性 · 含压力测试体检</small></div>
@@ -559,6 +580,74 @@ safe('分区重点数字', function(){
     +' · 储蓄率 '+((PD.savingsRate||0)*100).toFixed(0)+'%');
   set('zs-commit','月固定支出 ¥'+(PD.fixedOut||0).toLocaleString()+' · 其中订阅 ¥'+(PD.subsMonthly||0).toLocaleString());
   set('zs-risk','告警 '+(PD.alerts||[]).length+' 条 · 整体杠杆 '+((PD.leverage||0)*100).toFixed(1)+'%');
+});
+
+/* 换房倒计时横幅:2028-12-31 硬死线常驻首屏;完整路线图在底部抽屉区 */
+safe('换房横幅', function(){
+  const el = document.getElementById('reloc-banner');
+  const R = D.reloc;
+  if (!el) return;
+  if (!R){ el.style.display = 'none'; return; }
+  const ok = (R.bridgeGap||0) <= 0;
+  el.style.display = 'flex';
+  el.innerHTML = `<span>🚩 启动卖房还剩 <span class="n">${R.startMonthsLeft}</span> 个月</span>
+    <span class="sub">目标日 ${esc(R.targetDate)} · ${esc(R.why||'')}</span>
+    <span>净释放 ≈ <b>${wan(R.released)}</b> 进金融资产</span>
+    <span style="color:${ok?'inherit':'var(--red)'}">过桥 ${ok?'✓':'⚠ 缺口 '+wan(R.bridgeGap)}</span>
+    <a href="#reloc-full">完整路线图 ▸</a>`;
+});
+
+/* 增长归因主卡:净资产变化的因果——储蓄纪律看得见,市场归市场,房产归房产 */
+safe('增长归因', function(){
+  const el = document.getElementById('attrib');
+  const M = D.attributionMonthly || [];
+  const A = D.attribution;
+  if (!M.length){
+    el.innerHTML = A
+      ? `<div class="note">${A.from}→${A.to} 净资产 <b>${(A.deltaNW/1e4).toFixed(1)}万</b> = 储蓄 ${(A.savings/1e4).toFixed(1)} + 投资 ${(A.invest/1e4).toFixed(1)} + 房产 ${(A.property/1e4).toFixed(1)}</div>`
+      : '<div class="note">需 history.csv 跨月记录与现金流月账</div>';
+    return;
+  }
+  const w = v => (v>=0?'+':'−')+Math.abs(v/1e4).toFixed(1)+'万';
+  const last = M[M.length-1];
+  const COMP = [['savings','储蓄','#1baf7a'], ['invest','投资','#2a78d6'], ['property','房产','#4a3aa7']];  // = --c-bond/--c-eq/--c-prop
+  let html = `<div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi"><div class="l">${esc(last.month)}${last.draft?' · 草稿':''} ΔNW</div><div class="v" style="font-size:19px">${w(last.deltaNW)}</div></div>`;
+  COMP.forEach(([k,name,c])=>{
+    html += `<div class="kpi"><div class="l">${name}</div><div class="v" style="font-size:19px;color:${c}">${w(last[k])}</div></div>`;
+  });
+  html += `</div>`;
+  // 逐月堆叠柱:正的向上叠,负的向下叠,零线贯穿;草稿月半透明
+  const W = 560, H = 150, bot = 20;
+  let mxP = 1, mxN = 0;
+  M.forEach(m => {
+    let p = 0, n = 0;
+    COMP.forEach(([k]) => { const v = m[k]; if (v >= 0) p += v; else n -= v; });
+    mxP = Math.max(mxP, p); mxN = Math.max(mxN, n);
+  });
+  const sy = (H - bot - 14) / (mxP + mxN);
+  const y0 = 8 + mxP * sy;
+  const bw = W / M.length;
+  let g = `<line x1="0" x2="${W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="#111" stroke-width="2"/>`;
+  M.forEach((m,i)=>{
+    let up = y0, dn = y0;
+    COMP.forEach(([k,name,c])=>{
+      const v = m[k];
+      if (!v) return;
+      const h = Math.abs(v) * sy;
+      const y = v >= 0 ? up - h : dn;
+      g += `<rect x="${(i*bw+5).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw-10).toFixed(1)}" height="${Math.max(h,1).toFixed(1)}"
+        fill="${c}"${m.draft?' fill-opacity=".45"':''} stroke="#111" stroke-width="1.5"><title>${m.month} ${name} ${w(v)}</title></rect>`;
+      if (v >= 0) up -= h; else dn += h;
+    });
+    g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#111">${m.month.slice(2).replace('-','/')}</text>`;
+  });
+  html += `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;margin-top:10px" role="img" aria-label="逐月净资产增长归因堆叠柱">${g}</svg>`;
+  html += `<div class="att-leg">${COMP.map(([k,name,c])=>`<span><i style="background:${c}"></i>${name}</span>`).join('')}
+    <span style="opacity:.6">半透明 = 当月草稿未对账 · 零线之下 = 该块当月为负</span></div>`;
+  if (A) html += `<div class="note">全期 ${A.from}→${A.to}:ΔNW <b>${w(A.deltaNW)}</b> = 储蓄 ${w(A.savings)} + 投资 ${w(A.invest)} + 房产 ${w(A.property)} · 三块按构造精确闭合<br>
+    砍一笔订阅、提一次储蓄率,都会在下个月的绿色柱段里显形——现金流的纪律在这里变成资产</div>`;
+  el.innerHTML = html;
 });
 
 /* 未来大事时间轴:会改变月储蓄/资产的事件。系统只做加法,不理解因果——
@@ -716,13 +805,12 @@ safe('大类配置色块', function(){
     return (any && prev) ? (last/prev-1) : null;
   };
   const fmtChg = p => (p>=0?'+':'−')+Math.abs(p*100).toFixed(2)+'%';
-  /* 大盘星图式热力:涨红跌绿; |涨跌|≥3% 达最深;无数据回退大类色 */
+  /* 大盘星图式热力:涨红跌绿; |涨跌|≥3% 达最深;无变动/无数据用白底 */
   const HEAT_CAP = 0.03;
   const lerp = (a,b,t)=>Math.round(a+(b-a)*t);
-  const heatStyle = (p, classHex, amt) => {
-    if (p == null) {
-      const light = amt >= 0.3;
-      return {bg: lighten(classHex, amt), fg: light ? '#111' : '#fff', light};
+  const heatStyle = (p) => {
+    if (p == null || p === 0) {
+      return {bg: '#fff', fg: '#111', light: true};
     }
     const t = Math.min(Math.abs(p) / HEAT_CAP, 1);
     // 浅底 → 深色：涨 #ffe8e6→#c41e3a；跌 #e6f7ed→#0a7a45
@@ -789,8 +877,8 @@ safe('大类配置色块', function(){
     host.innerHTML = squarify(kids.map(k=>({name:k.name, v:k.value, k})), 0, 0, W, H).map(r=>{
       const k = r.it.k;
       const p0 = chgNode(k.node);
-      const p = (p0==null || p0===0) ? null : p0;   // 无当天数据/周末冻结为0 → 不显示涨跌
-      const hs = heatStyle(p, k.classHex, k.amt);
+      const p = (p0==null || p0===0) ? null : p0;   // 无当天数据/周末冻结为0 → 白底、不标涨跌%
+      const hs = heatStyle(p);
       // 涨跌文字：涨红跌绿，深色底用浅字保证对比
       const pctHtml = p==null ? '' :
         ` <b style="color:${p>0?(hs.light?'#c41e3a':'#ffd0d0'):(hs.light?'#0a7a45':'#c8f0d8')}">${fmtChg(p)}</b>`;
@@ -1053,13 +1141,7 @@ safe('真实收益', function(){
     html += `<div class="kv"><span>${esc(c)} <span class="sub">投入${(s.invested/1e4).toFixed(0)}万</span></span>
       <span class="v" style="color:${col(s.cum)}">${sPct(s.cum)}</span></div>`;
   });
-  const a = D.attribution;
-  if (a){
-    const w = v=>(v>=0?'+':'−')+Math.abs(v/1e4).toFixed(1)+'万';
-    html += `<div class="note">${a.from.slice(5).replace('-','/')}→${a.to.slice(5).replace('-','/')} 净资产 <b>${w(a.deltaNW)}</b><br>
-      = 储蓄 ${w(a.savings)} + 投资 ${w(a.invest)} + 房产净值 ${w(a.property)}${a.draft?' <span class="sub">(含当月草稿)</span>':''}</div>`;
-  }
-  el.innerHTML = html;
+  el.innerHTML = html;   // 增长归因已升为左侧主卡,此处不再重复
 });
 
 /* 财务自由进度 */
@@ -1092,7 +1174,7 @@ safe('财务自由进度', function(){
     </div>
   </div>`;
   html += `<div class="kv"><span class="txt">终身月支出 <span class="sub">(Coast FI 的分母)</span></span><span class="v">¥${(f.lifelongMonth||0).toLocaleString()}/月</span></div>`;
-  html += `<div class="kv"><span class="txt">月储蓄(当前) <span class="sub">会随事件上升,见 00 区阶梯</span></span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
+  html += `<div class="kv"><span class="txt">月储蓄(当前) <span class="sub">会随事件上升,见上方事件阶梯</span></span><span class="v">¥${(f.monthlySaving||0).toLocaleString()}/月</span></div>`;
   const NAMES = {0.02:'保守', 0.04:'基准', 0.06:'乐观'};
   (f.freeScenarios||[]).forEach((s,i)=>{
     const lo = (f.freeScenariosLo||[])[i], hi = (f.freeScenariosHi||[])[i];
