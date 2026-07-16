@@ -29,6 +29,7 @@ def _f(row, key):
 def build():
     cf = load_json("cashflow.json")
     dca = cf.get("定投计划", {})
+    life_goals = load_json("goal.json").get("人生目标") or []
     hist = read_csv("history.csv", [])
     ledger = read_csv("holdings_history.csv", [])
     trades = [r for r in ledger if r.get("动作") in ("买入", "卖出")]
@@ -68,6 +69,18 @@ def build():
     else:
         audit = "<p class='ok'>✓ 全部操作合规——没有一笔交易违反本声明。</p>"
 
+    # 序言:人生目标——整部宪法为什么存在。财务承诺可溯源到目标,复盘见年报
+    if life_goals:
+        items = "".join(
+            f"<li><b>{lg.get('名称', '')}</b> —— {lg.get('叙事', '')}"
+            f"<span style='opacity:.65'>（财务承诺:{' · '.join(lg.get('关联') or []) or '—'}）</span></li>"
+            for lg in life_goals)
+        preamble = (f"\n<h2>序言 人生目标(为什么)</h2>\n<div class='law'><ol>{items}</ol>"
+                    f"<p class='note' style='margin-top:8px'>以下每一条纪律都应能溯源到上面某个目标;"
+                    f"目标的年度复盘(财务自动汇总 + 手答问题)见年度报告。</p></div>")
+    else:
+        preamble = ""
+
     gen = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     html = f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -98,7 +111,7 @@ def build():
   @media print {{ * {{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }} body {{ padding:0; }} }}
 </style></head><body>
 <h1>投资政策声明<small>INVESTMENT POLICY STATEMENT</small></h1>
-
+{preamble}
 <h2>第一条 总纲(不可谈判)</h2>
 <div class="law"><ol>
 <li>本组合为<b>长期(10年+)被动配置</b>:收益来自 Beta 与纪律,不来自预测。</li>

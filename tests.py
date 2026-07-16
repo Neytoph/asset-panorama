@@ -360,6 +360,23 @@ def test_portfolio_perf():
     assert portfolio_perf(ledger, [], {"CNY": 1.0})["total"] is None
 
 
+def test_life_goals_roundtrip():
+    """人生目标表单往返：空名整行丢弃、关联中英逗号皆拆、问题按行拆空行剔除。"""
+    import cashflow_editor as ce
+    form = {"lg_name": ["孩子培养", "  ", "资产增值"],
+            "lg_story": ["教育钱提前到位", "x", "纪律换复利"],
+            "lg_links": ["换房,育儿储备", "x", "定投，增长归因"],
+            "lg_qs": ["今年陪孩子做成了什么?\n\n明年最重要的投入?", "x", "最好的一笔决定?"],
+            # parse_goal 还会读 FI/换房字段,给空值走默认
+            "swr": [""], "hx_on": ["0"]}
+    g = ce.parse_goal(form)
+    lgs = g["人生目标"]
+    assert [x["名称"] for x in lgs] == ["孩子培养", "资产增值"]      # 空名行丢弃
+    assert lgs[0]["关联"] == ["换房", "育儿储备"]
+    assert lgs[1]["关联"] == ["定投", "增长归因"]                    # 中文逗号也拆
+    assert lgs[0]["年度问题"] == ["今年陪孩子做成了什么?", "明年最重要的投入?"]  # 空行剔除
+
+
 def test_attribution():
     """归因三块精确闭合：ΔNW = 储蓄 + 投资(推算) + 房产净值变动。"""
     from metrics import attribution
@@ -668,6 +685,7 @@ if __name__ == "__main__":
     check("持仓成本聚合(净投入口径)", test_cost_basis)
     check("持仓差异自动记账", test_holdings_diff_trades)
     check("持仓管理表单往返", test_holdings_parse_roundtrip)
+    check("人生目标表单往返", test_life_goals_roundtrip)
     check("台账推演vs实际数量校验", test_ledger_qty_check)
     check("XIRR 基准值", test_xirr)
     check("组合/大类资金加权收益", test_portfolio_perf)

@@ -62,6 +62,66 @@ def _nw_svg(rows):
             f'stroke="#111" stroke-width="2.5"/></svg>')
 
 
+def _goal_facts(D, links):
+    """人生目标的「关联」→ 已有指标的一句话事实。未识别的关联原样列出(框架对自定义目标开放)。"""
+    fi = D.get("fi") or {}
+    R = D.get("reloc")
+    A = D.get("attribution")
+    t = (D.get("perf") or {}).get("total")
+    gap = ((D.get("insGap") or {}).get("life") or {}).get("gap", 0)
+    plats = D.get("platforms") or []
+    known = {
+        "换房": (f"启动还剩 {R['startMonthsLeft']} 个月 · 净释放 {_wan(R['released'])} 进金融资产" if R else None),
+        "育儿储备": (f"现值 {_wan(fi['reserve'])}（孩子成年前必须供,已计入真·自由线）" if fi.get("reserve") else None),
+        "目标态配置": (f"真·自由进度 {fi.get('freeProgress', 0) * 100:.0f}% · 配置偏离见「配置变化 vs 目标」" if fi else None),
+        "增长归因": (f"今年 ΔNW 中储蓄贡献 {_money(A['savings'])} · 投资 {_money(A['invest'])}" if A else None),
+        "真实收益": (f"组合累计 {_pct(t['cum'])}（净投入 {_wan(t['invested'])}）" if t else None),
+        "保险缺口": (f"⚠ 寿险缺口 {_wan(gap)}" if gap > 0 else "家庭保障已覆盖 ✓"),
+        "平台透明度": (f"金融资产分布 {len(plats)} 个平台,应急可查(见全景「应急参考」)" if plats else None),
+        "家庭预算": (f"月固定支出 ¥{D.get('fixedOut', 0):,.0f} · 其中订阅 ¥{D.get('subsMonthly', 0):,.0f}"),
+        "定投": "按真实结余×80% 自动,规则见 IPS 第三条",
+    }
+    out = []
+    for k in links or []:
+        v = known.get(k)
+        out.append(f"<b>{k}</b>:{v}" if v else k)
+    return out
+
+
+def _life_goals_section(D, year, partial):
+    """00 人生目标复盘。工具是仪式的主持人,不是人生的记分员:
+    财务部分自动生成;非财务只提问,答案由用户写进 docs/annual-review-<年>.md,逐年存档对照。"""
+    import html as _html
+    from portfolio_tracker import load_json
+    goals = load_json("goal.json").get("人生目标") or []
+    if not goals:
+        return ""
+    blocks = ""
+    for lg in goals:
+        facts = "".join(f"<li>{f}</li>" for f in _goal_facts(D, lg.get("关联")))
+        qs = "".join(f"<li>{_html.escape(q)}</li>" for q in (lg.get("年度问题") or []))
+        blocks += (f"<div class='cell' style='flex:1 1 260px'>"
+                   f"<div class='lab'>{_html.escape(lg.get('名称', ''))}</div>"
+                   f"<div style='font-weight:800;margin:4px 0 8px'>{_html.escape(lg.get('叙事', ''))}</div>"
+                   f"<ul style='margin-left:18px;font-size:13px'>{facts}</ul>"
+                   + (f"<div class='lab' style='margin-top:10px'>年度问题</div>"
+                      f"<ol style='margin-left:18px;font-size:13px'>{qs}</ol>" if qs else "")
+                   + "</div>")
+    prev_f = BASE / "docs" / f"annual-review-{year - 1}.md"
+    cur_f = BASE / "docs" / f"annual-review-{year}.md"
+    prev = ""
+    if prev_f.exists():
+        prev = (f"<details style='margin-top:10px'><summary style='font-weight:900;cursor:pointer'>"
+                f"▸ 去年的回答（annual-review-{year - 1}.md）</summary>"
+                f"<pre style='white-space:pre-wrap;font:12.5px/1.6 inherit;border:2.5px dashed #111;"
+                f"padding:10px 14px;margin-top:8px'>{_html.escape(prev_f.read_text(encoding='utf-8'))}</pre></details>")
+    status = ("✓ 今年已作答" if cur_f.exists()
+              else f"今年的回答写入 <b>docs/annual-review-{year}.md</b>（每目标一节,手写或让 agent 代笔访谈皆可）")
+    return (f"\n<h2>00 人生目标复盘{'（至今）' if partial else ''}</h2>"
+            f"<div class='tri'>{blocks}</div>"
+            f"<p class='note'>财务部分自动生成;问题只提不打分——工具是仪式的主持人,不是人生的记分员。{status}</p>{prev}")
+
+
 def build(year=None):
     from panorama_data import collect
     D = collect(persist_history=False, fetch_klines=False)
@@ -88,6 +148,11 @@ def build(year=None):
   <div><div class="lab">总净资产</div><div class="big">{_wan(nw0)} → <b>{_wan(nw1)}</b></div></div>
   <div><div class="lab">变化</div><div class="big" style="color:{'#1baf7a' if nw1 >= nw0 else '#e34948'}">{_money(nw1 - nw0)}（{_pct((nw1 - nw0) / nw0 if nw0 else 0)}）</div></div>
 </div>{_nw_svg(hist)}""")
+
+    # ── 人生目标复盘:财务基座自动汇总 + 年度提问(手答存 docs/annual-review-<年>.md) ──
+    life = _life_goals_section(D, year, partial)
+    if life:
+        S.append(life)
 
     # ── 归因 ──
     if attrib:
