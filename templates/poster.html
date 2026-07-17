@@ -789,25 +789,36 @@ safe('大类配置色块', function(){
     return t['hold:'+name] || t['acct:'+name] || t['acct:'+String(name).split('·')[0]] || null;
   };
   const TODAY = (PD.date||'').slice(0,10);
+  const MIND = new Date(new Date(TODAY+'T00:00:00').getTime()-3*864e5).toISOString().slice(0,10);
   // 交易日净投入(CNY,买正卖负):加仓本金不是涨幅——Dietz 口径 (今−昨−投入)/(昨+投入)
   const netBuy = (name, date) => (((PD.tradeNet||{})[name]||{})[date]) || 0;
-  const chg = name => {          // 当天涨跌:尾点必须是数据当天,否则不显示(如美股未出当日K线)
+  // 最近有波动的交易日涨跌:休市冻结点(Dietz后|p|≤0.01%,如周末的A股——含休市日补录交易的场合)
+  // 向前回退,最多3步——周六仍显示周五的真实波动;date≠今天时展示层标注日期。
+  // 序列尾超过3天(长假/断数)不显示;交易本身由走势图▲/▽标记承载,不占涨跌位。
+  const chgInfo = name => {
     const s = seriesOf(name);
-    if(!s || s.length<2 || s[s.length-1][0] !== TODAY) return null;
-    const a = s[s.length-2][1], b = s[s.length-1][1], nb = netBuy(name, TODAY);
-    return (a+nb) ? ((b-a-nb)/(a+nb)) : null;
+    if(!s || s.length<2 || s[s.length-1][0] < MIND) return null;
+    for(let i=s.length-1, k=0; i>=1 && k<3; i--, k++){
+      const a=s[i-1][1], b=s[i][1], nb=netBuy(name, s[i][0]);
+      if(!(a+nb)) return null;
+      const p=(b-a-nb)/(a+nb);
+      if(Math.abs(p)>1e-4) return {p, date:s[i][0], num:b-a-nb, den:a+nb};
+    }
+    return null;
   };
-  const chgNode = nd => {        // 子类/大类:仅聚合有当天数据的叶子,分子分母先加总再除
+  const chg = name => { const c=chgInfo(name); return c?c.p:null; };
+  const staleTag = name => {     // 涨跌属于哪个交易日:非今天则给个小日期角标
+    const c=chgInfo(name);
+    return (c && c.date!==TODAY) ? c.date.slice(5).replace('-','/') : null;
+  };
+  const chgNode = nd => {        // 子类/大类:各叶子取各自最近交易日的分子分母,先加总再除
     if(!nd.children || !nd.children.length) return chg(nd.name);
-    let prev=0, last=0, nb=0, any=false;
+    let num=0, den=0;
     leaves(nd).forEach(l=>{
-      const s = seriesOf(l.name);
-      if(s && s.length>=2 && s[s.length-1][0] === TODAY){
-        prev += s[s.length-2][1]; last += s[s.length-1][1];
-        nb += netBuy(l.name, TODAY); any = true;
-      }
+      const c = chgInfo(l.name);
+      if(c){ num += c.num; den += c.den; }
     });
-    return (any && prev+nb) ? ((last-prev-nb)/(prev+nb)) : null;
+    return den ? (num/den) : null;
   };
   const fmtChg = p => (p>=0?'+':'−')+Math.abs(p*100).toFixed(2)+'%';
   /* 大盘星图式热力:涨红跌绿; |涨跌|≥3% 达最深;无变动/无数据用白底 */
@@ -882,15 +893,17 @@ safe('大类配置色块', function(){
     host.innerHTML = squarify(kids.map(k=>({name:k.name, v:k.value, k})), 0, 0, W, H).map(r=>{
       const k = r.it.k;
       const p0 = chgNode(k.node);
-      const p = (p0==null || p0===0) ? null : p0;   // 无当天数据/周末冻结为0 → 白底、不标涨跌%
+      const p = (p0==null || p0===0) ? null : p0;   // 无近期数据/交易日恰平 → 白底、不标涨跌%
       const hs = heatStyle(p);
-      // 涨跌文字：涨红跌绿，深色底用浅字保证对比
+      const sd = (p!=null && !(k.node.children&&k.node.children.length)) ? staleTag(k.name) : null;
+      // 涨跌文字：涨红跌绿，深色底用浅字保证对比;休市顺延的涨跌带小日期角标
       const pctHtml = p==null ? '' :
-        ` <b style="color:${p>0?(hs.light?'#c41e3a':'#ffd0d0'):(hs.light?'#0a7a45':'#c8f0d8')}">${fmtChg(p)}</b>`;
+        ` <b style="color:${p>0?(hs.light?'#c41e3a':'#ffd0d0'):(hs.light?'#0a7a45':'#c8f0d8')}">${fmtChg(p)}</b>`
+        + (sd?`<i style="font-style:normal;font-size:8px;opacity:.75"> ${sd}</i>`:'');
       const small = r.w<54 || r.h<30;
       const lg = r.w>=104 && r.h>=54;
       const share = (k.value/totalV*100).toFixed(1);
-      const tip = `${k.name} · ${wan(k.value)} · ${share}%${p!=null?' · '+fmtChg(p):''}`;
+      const tip = `${k.name} · ${wan(k.value)} · ${share}%${p!=null?' · '+fmtChg(p)+(sd?'('+sd+')':''):''}`;
       return `<div class="hm-tile${lg?' lg':''}" data-name="${esc(k.name)}" title="${esc(tip)}" style="left:${r.x.toFixed(1)}px;top:${r.y.toFixed(1)}px;`
         + `width:${r.w.toFixed(1)}px;height:${r.h.toFixed(1)}px;background:${hs.bg};`
         + `color:${hs.fg}">${small?'':`<span class="n">${esc(k.name)}</span><span class="c" style="opacity:.9">${share}%${pctHtml}</span>`}</div>`;
@@ -945,9 +958,10 @@ safe('大类配置色块', function(){
         }
       } else if (heatMode) {
         const chgTxt = hp==null ? '—' : fmtChg(hp);
+        const sd = hp!=null ? staleTag(it.name) : null;
         inner = slim
           ? `<span class="nm">${esc(it.name)}</span><span class="pc">${chgTxt}</span>`
-          : `<span class="nm">${esc(it.name)}</span><div><span class="pc">${chgTxt}</span><div class="tg">${share.toFixed(1)}% · ${wan(it.value)}</div></div>`;
+          : `<span class="nm">${esc(it.name)}</span><div><span class="pc">${chgTxt}</span><div class="tg">${sd?sd+' · ':''}${share.toFixed(1)}% · ${wan(it.value)}</div></div>`;
       } else {
         inner = slim
           ? `<span class="nm">${esc(it.name)}</span><span class="pc">${share.toFixed(1)}%</span>`
@@ -955,8 +969,9 @@ safe('大类配置色块', function(){
       }
       el.innerHTML = inner;
       const p0 = heatMode ? hp0 : chgNode(it.node);
-      // 与 heatmap 同口径:0(周末冻结)当作无当天数据,不显示涨跌
-      el.title = `${it.name} · ${wan(it.value)} · ${share.toFixed(1)}%`+((p0!=null&&p0!==0)?' · '+fmtChg(p0):'');
+      // 与 heatmap 同口径:0(连续冻结)当作无数据,不显示涨跌;休市顺延标日期
+      const td = (p0!=null && p0!==0 && !(it.node.children&&it.node.children.length)) ? staleTag(it.name) : null;
+      el.title = `${it.name} · ${wan(it.value)} · ${share.toFixed(1)}%`+((p0!=null&&p0!==0)?' · '+fmtChg(p0)+(td?'('+td+')':''):'');
       if(!(it.node.children && it.node.children.length)){
         // 叶子:点击联动右侧走势(有序列才挂)
         if((PD.trends||{})['hold:'+it.name]){
