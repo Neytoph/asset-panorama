@@ -428,6 +428,16 @@ function signed(v, digits){
   const fpts=FIN.map((v,i)=>v!=null?`${x(i)},${y(v)}`:'').filter(Boolean).join(' ');
   if(fpts) g+=`<polyline points="${fpts}" fill="none" stroke="#199e70" stroke-width="1.4" stroke-dasharray="4 3"/>`;
   g+=`<circle cx="${x(n-1)}" cy="${y(HIST[n-1])}" r="3.5" fill="#3987e5" stroke="#0d0f14" stroke-width="2"/>`;
+  // 大额交易标记(单笔≥金融资产5%):琥珀菱形,悬停出明细——小额定投不标
+  const FULLD = (PD.history||[]).map(r=>r.date||'');
+  const bigByDate = {};
+  (PD.bigTrades||[]).forEach(t=>{ (bigByDate[t[0]]=bigByDate[t[0]]||[]).push(t); });
+  Object.keys(bigByDate).forEach(d=>{
+    const i = FULLD.indexOf(d);
+    if (i < 0) return;
+    const txt = bigByDate[d].map(t=>`${t[0].slice(5)} ${t[2]} ${t[1]} ${(t[3]/1e4).toFixed(1)}万`).join(' · ');
+    g+=`<rect x="${x(i)-4}" y="${y(HIST[i])-4}" width="8" height="8" transform="rotate(45 ${x(i)} ${y(HIST[i])})" fill="#e8b64c" stroke="#0d0f14" stroke-width="1.5"><title>${txt}</title></rect>`;
+  });
   g+=`<line id="xh" y1="${P.t}" y2="${H-P.b}" stroke="#e8b64c" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>`;
   svg.innerHTML=g;
   const xh=svg.querySelector('#xh');
@@ -854,7 +864,7 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
 (()=>{
   const tc = echarts.init(document.getElementById('c_trend'));
   const hint = document.getElementById('c_trend_hint');
-  let curSeries = null, curTitle = '', curRange = 'all';
+  let curSeries = null, curTitle = '', curRange = 'all', curName = null;
   const RNG = {'all':1e9,'3m':66,'1m':22};
   function draw(){
     let s = curSeries;
@@ -863,8 +873,28 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
       tc.clear(); return;
     }
     if (curRange!=='all') s = s.slice(-RNG[curRange]);
-    const f = s[0][1], l = s[s.length-1][1], chg = f ? (l/f-1) : 0;
-    hint.textContent = `${curTitle} · ${s.length}PTS · ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`;
+    // 区间收益=简单Dietz:剔除窗口内台账净投入(加仓本金不算涨幅)
+    let nbSum = 0;
+    if (curName){
+      const nbd = (D.tradeNet||{})[curName]||{};
+      for (const d in nbd) if (d > s[0][0] && d <= s[s.length-1][0]) nbSum += nbd[d];
+    }
+    const f = s[0][1], l = s[s.length-1][1], base = f + nbSum/2;
+    const chg = base ? (l-f-nbSum)/base : 0;
+    hint.textContent = `${curTitle} · ${s.length}PTS · ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`
+      + (nbSum ? ` · EX-FLOW ${wan(nbSum)}` : '');
+    // 台账买卖标记:▲加仓 / ▽卖出
+    const di = {}; s.forEach((p,i)=>{ di[p[0]] = i; });
+    const mpts = [];
+    (curName ? ((D.tradeMarks||{})[curName]||[]) : []).forEach(m=>{
+      const i = di[m[0]];
+      if (i == null) return;
+      const buy = m[1] === '买入';
+      mpts.push({coord:[i, s[i][1]], name:m[1],
+        symbol:'triangle', symbolRotate: buy?0:180, symbolSize:11,
+        itemStyle:{color: buy?'#e5484d':'#30a46c', borderColor:'#0b0d10', borderWidth:1},
+        info:`${m[0]} ${m[1]} ${m[2]}@${m[3]||'?'}${m[4]!=null?' · '+wan(m[4]):''}`});
+    });
     tc.setOption({
       tooltip:{trigger:'axis',valueFormatter:v=>wan(v),...TIP},
       grid:{left:52,right:12,top:12,bottom:24},
@@ -876,11 +906,14 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
         axisLabel:{color:T.faint,fontSize:10,fontFamily:T.mono,formatter:v=>(v/1e4).toFixed(0)+'万'}},
       series:[{type:'line',smooth:false,symbol:'none',data:s.map(p=>p[1]),
         lineStyle:{color:'#3987e5',width:1.8},
-        areaStyle:{color:'rgba(57,135,229,.12)'}}]
+        areaStyle:{color:'rgba(57,135,229,.12)'},
+        markPoint:{data:mpts, label:{show:false},
+          tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}}}]
     });
   }
-  window._renderTrend = (series,title)=>{curSeries=series;curTitle=title;draw();};
-  window._showTrend = (key,title)=>window._renderTrend(key?D.trends[key]:null,title);
+  window._renderTrend = (series,title,name)=>{curSeries=series;curTitle=title;curName=name||null;draw();};
+  window._showTrend = (key,title)=>window._renderTrend(key?D.trends[key]:null,title,
+    (key&&key.indexOf('hold:')===0)?key.slice(5):null);
   window._subMembers = {};
   (D.tree||[]).forEach(c=>(c.children||[]).forEach(s=>{window._subMembers[s.name]=(s.children||[]).map(x=>x.name);}));
   window._catNames = new Set((D.tree||[]).map(c=>c.name));

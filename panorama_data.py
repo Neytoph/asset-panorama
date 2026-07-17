@@ -214,6 +214,32 @@ def collect(persist_history=True, fetch_klines=True):
     # 浮盈：成本来自 holdings_history（净投入口径）；无成本记录的条目 pnl=None
     history_rows = read_csv("holdings_history.csv", [])
     cost_map = cost_basis(history_rows, fx)
+    # 台账 → 展示层：交易日「当日涨跌」的 Dietz 修正与买卖标记。
+    # tradeNet[名称][日期]=当日净投入CNY(买正卖负)——市值环比会把加仓本金当涨幅,
+    # 前端改算 (今值−昨值−净投入)/(昨值+净投入)；bigTrades 只收单笔≥金融资产5%的大动作。
+    trade_net, trade_marks, big_trades = {}, {}, []
+    big_th = fin * 0.05
+    for r in history_rows:
+        act = r.get("动作")
+        if act not in ("买入", "卖出"):
+            continue
+        d, name = (r.get("日期") or "").strip(), (r.get("名称") or "").strip()
+        if not d or not name:
+            continue
+        try:
+            amt = float((r.get("成交额") or "").replace(",", "").strip())
+        except ValueError:
+            amt = None
+        rate = fx.get((r.get("成交币种") or "").strip() or "CNY", 1.0)
+        cny = round(amt * rate) if amt is not None else None
+        if cny is not None:
+            byd = trade_net.setdefault(name, {})
+            byd[d] = byd.get(d, 0) + (cny if act == "买入" else -cny)
+        trade_marks.setdefault(name, []).append(
+            [d, act, r.get("数量") or "", r.get("成交价") or "", cny])
+        if cny is not None and cny >= big_th:
+            big_trades.append([d, name, act, cny])
+    big_trades.sort()
     R["warnings"] += [("warn", w) for w in ledger_qty_check(holdings, history_rows)]
     positions = []
     for h in holdings:
@@ -456,6 +482,7 @@ def collect(persist_history=True, fetch_klines=True):
         "fxLive": R["fx"].get("_live", True),
         "history": [{"date": h["date"], "总净资产": float(h["总净资产"]),
                      "金融资产": float(h["金融资产"])} for h in history],
+        "tradeNet": trade_net, "tradeMarks": trade_marks, "bigTrades": big_trades,
         "tree": tree_list,
         "trends": trends,
         "barbell": barbell,

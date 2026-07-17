@@ -789,22 +789,25 @@ safe('大类配置色块', function(){
     return t['hold:'+name] || t['acct:'+name] || t['acct:'+String(name).split('·')[0]] || null;
   };
   const TODAY = (PD.date||'').slice(0,10);
+  // 交易日净投入(CNY,买正卖负):加仓本金不是涨幅——Dietz 口径 (今−昨−投入)/(昨+投入)
+  const netBuy = (name, date) => (((PD.tradeNet||{})[name]||{})[date]) || 0;
   const chg = name => {          // 当天涨跌:尾点必须是数据当天,否则不显示(如美股未出当日K线)
     const s = seriesOf(name);
     if(!s || s.length<2 || s[s.length-1][0] !== TODAY) return null;
-    const a = s[s.length-2][1], b = s[s.length-1][1];
-    return a ? (b/a-1) : null;
+    const a = s[s.length-2][1], b = s[s.length-1][1], nb = netBuy(name, TODAY);
+    return (a+nb) ? ((b-a-nb)/(a+nb)) : null;
   };
-  const chgNode = nd => {        // 子类/大类:仅聚合有当天数据的叶子,按市值加总后算涨跌
+  const chgNode = nd => {        // 子类/大类:仅聚合有当天数据的叶子,分子分母先加总再除
     if(!nd.children || !nd.children.length) return chg(nd.name);
-    let prev=0, last=0, any=false;
+    let prev=0, last=0, nb=0, any=false;
     leaves(nd).forEach(l=>{
       const s = seriesOf(l.name);
       if(s && s.length>=2 && s[s.length-1][0] === TODAY){
-        prev += s[s.length-2][1]; last += s[s.length-1][1]; any = true;
+        prev += s[s.length-2][1]; last += s[s.length-1][1];
+        nb += netBuy(l.name, TODAY); any = true;
       }
     });
-    return (any && prev) ? (last/prev-1) : null;
+    return (any && prev+nb) ? ((last-prev-nb)/(prev+nb)) : null;
   };
   const fmtChg = p => (p>=0?'+':'−')+Math.abs(p*100).toFixed(2)+'%';
   /* 大盘星图式热力:涨红跌绿; |涨跌|≥3% 达最深;无变动/无数据用白底 */
@@ -915,13 +918,18 @@ safe('大类配置色块', function(){
     mosaic.innerHTML = '';
     const total = items.reduce((s,x)=>s+x.value,0)||1;
     const cellEls = [];
+    // 全叶子层(如 权益›美股 的成分):hover 热力转为常驻——底色=当日涨跌,块内直接标涨跌%
+    const heatMode = level>0 && items.every(x=>!(x.node.children&&x.node.children.length));
     items.forEach(it=>{
       const share = it.value/total*100;
-      const light = level===0 ? it.cfg.light : it.amt>=0.3;
+      const hp0 = heatMode ? chgNode(it.node) : null;
+      const hp = (hp0==null || hp0===0) ? null : hp0;   // 0=周末冻结/无当天数据 → 白底不标
+      const hs = heatMode ? heatStyle(hp) : null;
+      const light = heatMode ? hs.light : (level===0 ? it.cfg.light : it.amt>=0.3);
       const slim = level===0 ? it.cfg.slim : share<8;
       const el = document.createElement('div');
       el.className = 'cell'+(slim?' slim':'')+(light?' light':'');
-      el.style.background = it.amt ? lighten(it.classHex, it.amt) : it.classHex;
+      el.style.background = heatMode ? hs.bg : (it.amt ? lighten(it.classHex, it.amt) : it.classHex);
       let inner;
       if(level===0){
         const cur = it.value/nw*100, tgt = (target[it.name]||0)*100, diff = cur-tgt;
@@ -935,16 +943,27 @@ safe('大类配置色块', function(){
             tgTxt += ' · 差 '+(diff>=0?'+':'−')+Math.abs(diff).toFixed(1)+'%';
           inner = `<span class="nm">${it.cfg.label}</span>${sticker}<div><span class="pc">${cur.toFixed(1)}%</span><div class="tg">${tgTxt}</div></div>`;
         }
+      } else if (heatMode) {
+        const chgTxt = hp==null ? '—' : fmtChg(hp);
+        inner = slim
+          ? `<span class="nm">${esc(it.name)}</span><span class="pc">${chgTxt}</span>`
+          : `<span class="nm">${esc(it.name)}</span><div><span class="pc">${chgTxt}</span><div class="tg">${share.toFixed(1)}% · ${wan(it.value)}</div></div>`;
       } else {
         inner = slim
           ? `<span class="nm">${esc(it.name)}</span><span class="pc">${share.toFixed(1)}%</span>`
           : `<span class="nm">${esc(it.name)}</span><div><span class="pc">${share.toFixed(1)}%</span><div class="tg">${wan(it.value)}</div></div>`;
       }
       el.innerHTML = inner;
-      const p0 = chgNode(it.node);
+      const p0 = heatMode ? hp0 : chgNode(it.node);
       // 与 heatmap 同口径:0(周末冻结)当作无当天数据,不显示涨跌
       el.title = `${it.name} · ${wan(it.value)} · ${share.toFixed(1)}%`+((p0!=null&&p0!==0)?' · '+fmtChg(p0):'');
-      if(it.node.children && it.node.children.length){
+      if(!(it.node.children && it.node.children.length)){
+        // 叶子:点击联动右侧走势(有序列才挂)
+        if((PD.trends||{})['hold:'+it.name]){
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', ()=>window._showTrend && window._showTrend('hold:'+it.name, it.name));
+        }
+      } else {
         el.style.cursor = 'pointer';
         el.addEventListener('mouseenter', ()=>showHeat(el, it));
         el.addEventListener('mouseleave', hideHeat);
@@ -1028,6 +1047,15 @@ safe('净值走势', function(){
   const fmtDate = d => (d||'').slice(5).replace('-','/');
   g+=`<circle cx="${x(pk)}" cy="${y(H[pk])}" r="7" fill="var(--c-gold)" stroke="#111" stroke-width="3"><title>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</title></circle>`;
   g+=`<circle cx="${x(n-1)}" cy="${y(H[n-1])}" r="7" fill="var(--red)" stroke="#111" stroke-width="3"><title>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</title></circle>`;
+  // 大额交易标记(单笔≥金融资产5%):金菱形,悬停出明细——小额定投不标,避免密密麻麻
+  const bigByDate = {};
+  (PD.bigTrades||[]).forEach(t=>{ (bigByDate[t[0]]=bigByDate[t[0]]||[]).push(t); });
+  Object.keys(bigByDate).forEach(d=>{
+    const i = DATE.indexOf(d);
+    if (i < 0) return;
+    const txt = bigByDate[d].map(t=>`${fmtDate(t[0])} ${t[2]} ${t[1]} ${(t[3]/1e4).toFixed(1)}万`).join(' · ');
+    g+=`<rect x="${x(i)-6}" y="${y(H[i])-6}" width="12" height="12" transform="rotate(45 ${x(i)} ${y(H[i])})" fill="var(--c-gold)" stroke="#111" stroke-width="2.5"><title>${txt}</title></rect>`;
+  });
   g+=`<line id="sp-xh" y1="${P.t}" y2="${HT-P.b}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
   g+=`<circle id="sp-hd" r="7" fill="var(--c-bond)" stroke="#111" stroke-width="3" opacity="0" pointer-events="none"/>`;
   svg.innerHTML=g;
@@ -1728,7 +1756,7 @@ safe('选中资产走势', ()=>{
   }
   const tc = echarts.init(document.getElementById('c_trend'));
   const hint = document.getElementById('c_trend_hint');
-  let curSeries = null, curTitle = '', curRange = 'all';
+  let curSeries = null, curTitle = '', curRange = 'all', curName = null;
   const RNG = {'all':1e9,'3m':66,'1m':22};
   function draw(){
     let s = curSeries;
@@ -1737,8 +1765,28 @@ safe('选中资产走势', ()=>{
       tc.clear(); return;
     }
     if (curRange!=='all') s = s.slice(-RNG[curRange]);
-    const f = s[0][1], l = s[s.length-1][1], chg = f ? (l/f-1) : 0;
-    hint.textContent = `${curTitle} ── ${s.length}点 · 区间 ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`;
+    // 区间收益 = 简单Dietz:剔除窗口内台账净投入,加仓本金不算涨幅
+    let nbSum = 0;
+    if (curName){
+      const nbd = (D.tradeNet||{})[curName]||{};
+      for (const d in nbd) if (d > s[0][0] && d <= s[s.length-1][0]) nbSum += nbd[d];
+    }
+    const f = s[0][1], l = s[s.length-1][1], base = f + nbSum/2;
+    const chg = base ? (l-f-nbSum)/base : 0;
+    hint.textContent = `${curTitle} ── ${s.length}点 · 区间 ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`
+      + (nbSum ? ` · 已剔除净投入 ${wan(nbSum)}` : '');
+    // 台账买卖标记:▲加仓红 / ▽卖出绿,悬停出 数量@价·金额
+    const dateIdx = {}; s.forEach((p,i)=>{ dateIdx[p[0]] = i; });
+    const mpts = [];
+    (curName ? ((D.tradeMarks||{})[curName]||[]) : []).forEach(m=>{
+      const i = dateIdx[m[0]];
+      if (i == null) return;
+      const buy = m[1] === '买入';
+      mpts.push({coord:[i, s[i][1]], name:m[1],
+        symbol:'triangle', symbolRotate: buy?0:180, symbolSize:14,
+        itemStyle:{color: buy?'#c41e3a':'#0a7a45', borderColor:'#111', borderWidth:2},
+        info:`${m[0]} ${m[1]} ${m[2]}@${m[3]||'?'}${m[4]!=null?' · '+wan(m[4]):''}`});
+    });
     tc.setOption({
       tooltip:{trigger:'axis',valueFormatter:v=>wan(v),
         axisPointer:{lineStyle:{color:'#111',width:1.5,type:'dashed'}},...TIP},
@@ -1754,11 +1802,14 @@ safe('选中资产走势', ()=>{
         itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
         emphasis:{scale:false},
         lineStyle:{color:'#111',width:4},
-        areaStyle:{color:'rgba(42,120,214,.15)'}}]
+        areaStyle:{color:'rgba(42,120,214,.15)'},
+        markPoint:{data:mpts, label:{show:false}, emphasis:{scale:1.2},
+          tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}}}]
     });
   }
-  window._renderTrend = (series,title)=>{curSeries=series;curTitle=title;draw();};
-  window._showTrend = (key,title)=>window._renderTrend(key?D.trends[key]:null,title);
+  window._renderTrend = (series,title,name)=>{curSeries=series;curTitle=title;curName=name||null;draw();};
+  window._showTrend = (key,title)=>window._renderTrend(key?D.trends[key]:null,title,
+    (key&&key.indexOf('hold:')===0)?key.slice(5):null);
   const TOTAL = (D.history||[]).map(r=>[r.date, r['总净资产']]);   // 总资产走势:直接取净值历史
   window._showTotal = ()=>window._renderTrend(TOTAL.length?TOTAL:null, '总净资产');
   window._subMembers = {};

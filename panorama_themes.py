@@ -410,6 +410,14 @@ function mkBar(id,obj,color){{
 // 净值线
 (()=>{{
   const h=D.history;
+  // 大额交易标记(单笔≥金融资产5%):小额定投不标
+  const di={{}};h.forEach((r,i)=>{{di[r.date]=i;}});
+  const bigByDate={{}};
+  (D.bigTrades||[]).forEach(t=>{{(bigByDate[t[0]]=bigByDate[t[0]]||[]).push(t);}});
+  const bmk=Object.keys(bigByDate).filter(d=>di[d]!=null).map(d=>({{
+    coord:[di[d],h[di[d]].总净资产],symbol:'diamond',symbolSize:13,
+    itemStyle:{{color:T.warn,borderColor:T.dim,borderWidth:1}},
+    info:bigByDate[d].map(t=>t[0]+' '+t[2]+' '+t[1]+' '+fmtWan(t[3])).join('<br>')}}));
   echarts.init(document.getElementById('c_line')).setOption({{
     tooltip:{{trigger:'axis',valueFormatter:fmtWan}},
     legend:{{data:['总净资产','金融资产'],textStyle:{{color:T.ink,fontSize:11}},top:0}},
@@ -421,7 +429,9 @@ function mkBar(id,obj,color){{
     series:[
       {{name:'总净资产',type:'line',smooth:true,symbol:'circle',symbolSize:6,data:h.map(r=>r.总净资产),
         lineStyle:{{color:T.line1,width:2.5}},itemStyle:{{color:T.line1}},
-        areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'44'}},{{offset:1,color:T.line1+'05'}}])}}}},
+        areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'44'}},{{offset:1,color:T.line1+'05'}}])}},
+        markPoint:{{data:bmk,label:{{show:false}},
+          tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}}}},
       {{name:'金融资产',type:'line',smooth:true,symbol:'circle',symbolSize:6,data:h.map(r=>r.金融资产),
         lineStyle:{{color:T.line2,width:2.5}},itemStyle:{{color:T.line2}}}}
     ]
@@ -606,14 +616,29 @@ mkBar('c_liq',D.liq);
 (()=>{{
   const tc=echarts.init(document.getElementById('c_trend'));
   const hint=document.getElementById('c_trend_hint');
-  let curSeries=null,curTitle='',curRange='all';
+  let curSeries=null,curTitle='',curRange='all',curName=null;
   const RNG={{'all':1e9,'3m':66,'1m':22}};
   function draw(){{
     let s=curSeries;
     if(!s||!s.length){{hint.textContent=curTitle?(curTitle+'：暂无走势数据（无行情或未记录）'):'点击上方图表的大类/子类/持仓，查看其走势';tc.clear();return;}}
     if(curRange!=='all')s=s.slice(-RNG[curRange]);
-    const f=s[0][1],l=s[s.length-1][1],chg=f?(l/f-1):0;
-    hint.textContent=curTitle+' · '+s.length+'点 · 区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%';
+    // 区间收益=简单Dietz:剔除窗口内台账净投入(加仓本金不算涨幅)
+    let nbSum=0;
+    if(curName){{const nbd=(D.tradeNet||{{}})[curName]||{{}};
+      for(const d in nbd)if(d>s[0][0]&&d<=s[s.length-1][0])nbSum+=nbd[d];}}
+    const f=s[0][1],l=s[s.length-1][1],base=f+nbSum/2,chg=base?(l-f-nbSum)/base:0;
+    hint.textContent=curTitle+' · '+s.length+'点 · 区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
+      +(nbSum?' · 已剔除净投入'+fmtWan(nbSum):'');
+    // 台账买卖标记:▲加仓 / ▽卖出,悬停出 数量@价·金额
+    const di={{}};s.forEach((p,i)=>{{di[p[0]]=i;}});
+    const mpts=[];
+    (curName?((D.tradeMarks||{{}})[curName]||[]):[]).forEach(m=>{{
+      const i=di[m[0]];if(i==null)return;
+      const buy=m[1]==='买入';
+      mpts.push({{coord:[i,s[i][1]],name:m[1],symbol:'triangle',symbolRotate:buy?0:180,
+        symbolSize:12,itemStyle:{{color:buy?T.bad:T.good,borderColor:T.dim,borderWidth:1}},
+        info:m[0]+' '+m[1]+' '+m[2]+'@'+(m[3]||'?')+(m[4]!=null?' · '+fmtWan(m[4]):'')}});
+    }});
     tc.setOption({{
       tooltip:{{trigger:'axis',valueFormatter:v=>fmtWan(v)}},
       grid:{{left:58,right:18,top:16,bottom:26}},
@@ -624,11 +649,14 @@ mkBar('c_liq',D.liq);
         splitLine:{{lineStyle:{{color:T.grid}}}}}},
       series:[{{type:'line',smooth:true,symbol:'none',data:s.map(p=>p[1]),
         lineStyle:{{color:T.line1,width:2.5}},
-        areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'33'}},{{offset:1,color:T.line1+'05'}}])}}}}]
+        areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'33'}},{{offset:1,color:T.line1+'05'}}])}},
+        markPoint:{{data:mpts,label:{{show:false}},
+          tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}}}}]
     }});
   }}
-  window._renderTrend=(series,title)=>{{curSeries=series;curTitle=title;draw();}};
-  window._showTrend=(key,title)=>window._renderTrend(key?D.trends[key]:null,title);
+  window._renderTrend=(series,title,name)=>{{curSeries=series;curTitle=title;curName=name||null;draw();}};
+  window._showTrend=(key,title)=>window._renderTrend(key?D.trends[key]:null,title,
+    (key&&key.indexOf('hold:')===0)?key.slice(5):null);
   window._subMembers={{}};D.tree.forEach(c=>(c.children||[]).forEach(s=>{{window._subMembers[s.name]=(s.children||[]).map(x=>x.name);}}));
   window._catNames=new Set(D.tree.map(c=>c.name));
   const rb=document.getElementById('c_trend_range');
