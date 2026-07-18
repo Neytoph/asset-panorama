@@ -468,7 +468,7 @@ function mkBar(id,obj,color){{
   const opt={{
     tooltip:{{trigger:'item',formatter:p=>`${{p.name}}<br>${{fmtWan(p.value)}} · ${{(p.value/total*100).toFixed(1)}}%`}},
     series:[{{type:'sunburst',data,radius:['30%','99%'],center:['50%','50%'],
-      sort:null,nodeClick:false,emphasis:{{focus:'ancestor'}},
+      sort:null,nodeClick:false,emphasis:{{focus:'relative'}},
       itemStyle:{{borderColor:T.panel,borderWidth:2,borderRadius:3}},
       levels:[
         {{}},

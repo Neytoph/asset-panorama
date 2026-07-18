@@ -750,7 +750,7 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
     series:[{type:'sunburst',data,radius:['30%','98%'],center:['50%','50%'],
-      sort:null,nodeClick:false,emphasis:{focus:'ancestor'},
+      sort:null,nodeClick:false,emphasis:{focus:'relative'},
       itemStyle:{borderColor:'#0d0f14',borderWidth:2,borderRadius:1},
       levels:[
         {},

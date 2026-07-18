@@ -1680,7 +1680,7 @@ safe('旭日图', ()=>{
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
     series:[{type:'sunburst',data,radius:['30%','98%'],center:['50%','50%'],
-      sort:null,nodeClick:false,emphasis:{focus:'ancestor'},
+      sort:null,nodeClick:false,emphasis:{focus:'relative'},
       itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
       levels:[
         {},
