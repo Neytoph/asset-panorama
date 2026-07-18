@@ -379,7 +379,6 @@
   <div class="blk">
     <div class="sec-h">选中资产走势
       <span class="trendbar"><select id="c_trend_acct"></select>
-        <button id="c_trend_mode" style="display:none">价格</button>
         <button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all" class="on">全部</button></span>
     </div>
     <div class="pad">
@@ -1777,7 +1776,6 @@ safe('选中资产走势', ()=>{
   const RNG = {'all':1e9,'3m':66,'1m':22};
   const CSYM = {USD:'$', HKD:'HK$', CNY:'¥'};
   const fmtPx = v => v>=100 ? v.toFixed(0) : v>=10 ? v.toFixed(2) : v.toFixed(3);
-  const modeBtn = document.getElementById('c_trend_mode');
   const AXIS = s => ({type:'category',data:s.map(p=>p[0]),boundaryGap:false,
     axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans,
       formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
@@ -1798,11 +1796,6 @@ safe('选中资产走势', ()=>{
       tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}};
   };
   function draw(){
-    if (modeBtn){
-      const dual = !!(curData && curData.mv && curData.px);
-      modeBtn.style.display = dual ? '' : 'none';
-      modeBtn.classList.toggle('on', curMode==='px');
-    }
     let s = curData ? (curMode==='mv' ? curData.mv : curMode==='px' ? curData.px : curData.val) : null;
     if (!s || !s.length){
       hint.textContent = curTitle ? (curTitle+'：暂无走势数据（无行情或未记录）') : '点击持仓地图查看走势';
@@ -1878,10 +1871,6 @@ safe('选中资产走势', ()=>{
         markPoint:marksOf(s, (i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}]
     });
   }
-  if (modeBtn) modeBtn.addEventListener('click', ()=>{
-    curMode = curMode==='px' ? (curData&&curData.mv?'mv':'val') : 'px';
-    draw();
-  });
   window._renderTrend = (series,title,name)=>{curData={val:series||null};curTitle=title;curName=name||null;curMode='val';draw();};
   window._showTrend = (key,title)=>{
     // 个股/ETF:默认市值+成本双线(mvc:),可切价格曲线(px:);其余回退市值线

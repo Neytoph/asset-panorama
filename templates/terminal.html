@@ -275,7 +275,6 @@
     <div class="panel" style="flex:1">
       <div class="phead"><span>INSTRUMENT ─ 选中资产走势</span>
         <span class="trendbar"><select id="c_trend_acct"></select>
-          <button id="c_trend_mode" style="display:none">PX</button>
           <button data-r="1m">1M</button><button data-r="3m">3M</button><button data-r="all" class="on">ALL</button></span>
       </div>
       <div class="pbody">
@@ -868,7 +867,6 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
   // 三模式:mv=市值+成本双线(个股默认) / px=价格曲线(切换) / val=市值线(期权/账户/大类兜底)
   let curTitle = '', curRange = 'all', curName = null, curMode = 'val', curData = null;
   const RNG = {'all':1e9,'3m':66,'1m':22};
-  const modeBtn = document.getElementById('c_trend_mode');
   const AXIS = s => ({type:'category',data:s.map(p=>p[0]),boundaryGap:false,
     axisLabel:{color:T.faint,fontSize:10,fontFamily:T.mono,
       formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
@@ -889,11 +887,6 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
       tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}};
   };
   function draw(){
-    if (modeBtn){
-      const dual = !!(curData && curData.mv && curData.px);
-      modeBtn.style.display = dual ? '' : 'none';
-      modeBtn.classList.toggle('on', curMode==='px');
-    }
     let s = curData ? (curMode==='mv' ? curData.mv : curMode==='px' ? curData.px : curData.val) : null;
     if (!s || !s.length){
       hint.textContent = curTitle ? (curTitle+'：暂无走势数据（无行情或未记录）') : '点击持仓地图查看走势';
@@ -963,10 +956,6 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
         markPoint:marksOf(s, (i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}]
     });
   }
-  if (modeBtn) modeBtn.addEventListener('click', ()=>{
-    curMode = curMode==='px' ? (curData&&curData.mv?'mv':'val') : 'px';
-    draw();
-  });
   window._renderTrend = (series,title,name)=>{curData={val:series||null};curTitle=title;curName=name||null;curMode='val';draw();};
   window._showTrend = (key,title)=>{
     const nm = (key&&key.indexOf('hold:')===0)?key.slice(5):null;

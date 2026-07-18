@@ -352,7 +352,7 @@ def render(theme_key, D=None):
           <div id="c_tree" class="chart" style="height:440px;flex:1;min-width:340px;position:relative"></div>
           <div id="c_tree_legend" style="width:160px"></div>
         </div></div>
-      <div class="card c6"><h3>选中资产走势<span id="c_trend_range" style="float:right;font-weight:400"><button id="c_trend_mode" style="display:none">价格</button><button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all">全部</button></span><select id="c_trend_acct" style="float:right;font-weight:400"></select></h3><div class="hint" id="c_trend_hint">点击上方图表的大类/子类/持仓，查看其走势</div><div id="c_trend" class="chart" style="height:240px"></div></div>
+      <div class="card c6"><h3>选中资产走势<span id="c_trend_range" style="float:right;font-weight:400"><button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all">全部</button></span><select id="c_trend_acct" style="float:right;font-weight:400"></select></h3><div class="hint" id="c_trend_hint">点击上方图表的大类/子类/持仓，查看其走势</div><div id="c_trend" class="chart" style="height:240px"></div></div>
       <div class="card c6"><h3>🏋️ 杠铃视图</h3><div class="hint">安全腿(亏不了) · 核心(多元化β) · 冒险腿(非对称) · 中间(待审视) — 安全腿可覆盖现金流缺口 {D['safetyMonths']} 个月</div><div id="c_barbell" class="chart sm"></div></div>
       <div class="card c2"><h3>地域敞口</h3><div class="hint">全资产</div><div id="c_region" class="chart sm"></div></div>
       <div class="card c2"><h3>币种敞口</h3><div class="hint">金融资产·底层FX</div><div id="c_ccy" class="chart sm"></div></div>
@@ -621,7 +621,6 @@ mkBar('c_liq',D.liq);
   const RNG={{'all':1e9,'3m':66,'1m':22}};
   const CSYM={{USD:'$',HKD:'HK$',CNY:'¥'}};
   const fmtPx=v=>v>=100?v.toFixed(0):v>=10?v.toFixed(2):v.toFixed(3);
-  const modeBtn=document.getElementById('c_trend_mode');
   const AXIS=s=>({{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
     axisLabel:{{color:T.dim,fontSize:10,formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''}},
     axisLine:{{lineStyle:{{color:T.grid}}}}}});
@@ -638,11 +637,6 @@ mkBar('c_liq',D.liq);
     return {{data:mpts,label:{{show:false}},tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}};
   }};
   function draw(){{
-    if(modeBtn){{
-      const dual=!!(curData&&curData.mv&&curData.px);
-      modeBtn.style.display=dual?'':'none';
-      modeBtn.style.fontWeight=curMode==='px'?'700':'400';
-    }}
     let s=curData?(curMode==='mv'?curData.mv:curMode==='px'?curData.px:curData.val):null;
     if(!s||!s.length){{hint.textContent=curTitle?(curTitle+'：暂无走势数据（无行情或未记录）'):'点击上方图表的大类/子类/持仓，查看其走势';tc.clear();return;}}
     if(curRange!=='all')s=s.slice(-RNG[curRange]);
@@ -705,10 +699,6 @@ mkBar('c_liq',D.liq);
         markPoint:marksOf(s,(i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}}]
     }});
   }}
-  if(modeBtn)modeBtn.addEventListener('click',()=>{{
-    curMode=curMode==='px'?(curData&&curData.mv?'mv':'val'):'px';
-    draw();
-  }});
   window._renderTrend=(series,title,name)=>{{curData={{val:series||null}};curTitle=title;curName=name||null;curMode='val';draw();}};
   window._showTrend=(key,title)=>{{
     const nm=(key&&key.indexOf('hold:')===0)?key.slice(5):null;
