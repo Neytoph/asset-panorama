@@ -491,12 +491,22 @@ function mkBar(id,obj,color){{
     if(nd&&nd.children&&nd.children.length){{curRoot={{name:nm,val:p.value}};resetLbl();renderAt(nd.children);}}
     if(window._catNames&&window._catNames.has(nm)&&D.trends['cat:'+nm])window._showTrend&&window._showTrend('cat:'+nm,nm);
     else if(window._subMembers&&window._subMembers[nm]){{
-      const mem=window._subMembers[nm].filter(n=>D.trends['hold:'+n]);
-      if(mem.length){{const dset=new Set();
+      const memAll=window._subMembers[nm];
+      const memM=memAll.filter(n=>D.trends['mvc:'+n]);
+      const memV=memAll.filter(n=>!D.trends['mvc:'+n]&&D.trends['hold:'+n]);
+      if(memM.length&&!memV.length){{
+        const dset=new Set();
+        const maps=memM.map(n=>{{const o={{}};D.trends['mvc:'+n].forEach(a=>{{o[a[0]]=a;dset.add(a[0]);}});return o;}});
+        const ax=Array.from(dset).sort(),last=new Array(maps.length).fill(null);
+        const series=ax.map(d=>{{let mv=0,c=0;for(let i=0;i<maps.length;i++){{if(maps[i][d])last[i]=maps[i][d];if(last[i]){{mv+=last[i][1];c+=last[i][2];}}}}return [d,mv,c];}});
+        window._renderTrend(series,nm);}}
+      else if(memM.length+memV.length){{
+        const mem=memAll.filter(n=>D.trends['hold:'+n]);
+        const dset=new Set();
         const maps=mem.map(n=>{{const o={{}};D.trends['hold:'+n].forEach(a=>{{o[a[0]]=a[1];dset.add(a[0]);}});return o;}});
         const ax=Array.from(dset).sort(),last=new Array(maps.length).fill(null);
         const series=ax.map(d=>{{let s=0;for(let i=0;i<maps.length;i++){{if(maps[i][d]!=null)last[i]=maps[i][d];if(last[i]!=null)s+=last[i];}}return [d,s];}});
-        window._renderTrend(series,nm);}}
+        window._renderTrend(series,nm,null,mem);}}
       else window._renderTrend&&window._renderTrend(null,nm);}}
     else if(D.trends['hold:'+nm])window._showTrend&&window._showTrend('hold:'+nm,nm);
     else window._showTrend&&window._showTrend(null,nm);}});
@@ -617,7 +627,7 @@ mkBar('c_liq',D.liq);
   const tc=echarts.init(document.getElementById('c_trend'));
   const hint=document.getElementById('c_trend_hint');
   // 三模式:mv=市值+成本双线(个股默认) / px=价格曲线(切换) / val=市值线(期权/账户/大类兜底)
-  let curTitle='',curRange='all',curName=null,curMode='val',curData=null;
+  let curTitle='',curRange='all',curName=null,curMode='val',curData=null,curAgg=null;
   const RNG={{'all':1e9,'3m':66,'1m':22}};
   const CSYM={{USD:'$',HKD:'HK$',CNY:'¥'}};
   const fmtPx=v=>v>=100?v.toFixed(0):v>=10?v.toFixed(2):v.toFixed(3);
@@ -667,7 +677,7 @@ mkBar('c_liq',D.liq);
           {{type:'line',data:mv,symbol:'none',z:4,lineStyle:{{color:T.line1,width:2.5}},
             markPoint:marksOf(s,i=>s[i][1])}}
         ]
-      }});
+      }},true);
       return;
     }}
     const isPx=curMode==='px';
@@ -677,8 +687,9 @@ mkBar('c_liq',D.liq);
     const qat=d=>{{let q=0;(meta.qty||[]).forEach(e=>{{if(e[0]<=d)q+=e[1];}});return q;}};
     // 价格曲线:区间=纯价格涨跌;市值曲线:简单Dietz剔除窗口内台账净投入
     let nbSum=0;
-    if(!isPx&&curName){{const nbd=(D.tradeNet||{{}})[curName]||{{}};
-      for(const d in nbd)if(d>s[0][0]&&d<=s[s.length-1][0])nbSum+=nbd[d];}}
+    if(!isPx){{(curName?[curName]:(curAgg||[])).forEach(n=>{{
+      const nbd=(D.tradeNet||{{}})[n]||{{}};
+      for(const d in nbd)if(d>s[0][0]&&d<=s[s.length-1][0])nbSum+=nbd[d];}});}}
     const f=s[0][1],l=s[s.length-1][1],base=f+nbSum/2,chg=base?(l-f-nbSum)/base:0;
     hint.textContent=curTitle+' · '+s.length+'点 · '+(isPx?'价格'+csym+fmtPx(l)+' · ':'')
       +'区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
@@ -697,15 +708,23 @@ mkBar('c_liq',D.liq);
         lineStyle:{{color:T.line1,width:2.5}},
         areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'33'}},{{offset:1,color:T.line1+'05'}}])}},
         markPoint:marksOf(s,(i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}}]
-    }});
+    }},true);
   }}
-  window._renderTrend=(series,title,name)=>{{curData={{val:series||null}};curTitle=title;curName=name||null;curMode='val';draw();}};
+  window._renderTrend=(series,title,name,aggNames)=>{{
+    const isMvc=!!(series&&series.length&&series[0].length>2);
+    curData=isMvc?{{mv:series}}:{{val:series||null}};
+    curTitle=title;curName=name||null;curAgg=aggNames||null;
+    curMode=isMvc?'mv':'val';draw();
+  }};
+  const catLeaves=cat=>{{const c=(D.tree||[]).find(x=>x.name===cat);const out=[];
+    (c?(c.children||[]):[]).forEach(sc=>(sc.children||[]).forEach(l=>out.push(l.name)));return out;}};
   window._showTrend=(key,title)=>{{
     const nm=(key&&key.indexOf('hold:')===0)?key.slice(5):null;
     curData={{mv:nm?(D.trends['mvc:'+nm]||null):null,
              px:nm?(D.trends['px:'+nm]||null):null,
              val:key?(D.trends[key]||null):null}};
     curTitle=title;curName=nm;
+    curAgg=(key&&key.indexOf('cat:')===0)?catLeaves(key.slice(4)):null;
     curMode=curData.mv?'mv':(curData.px?'px':'val');
     draw();
   }};

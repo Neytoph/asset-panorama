@@ -413,6 +413,23 @@ def collect(persist_history=True, fetch_klines=True):
                        if d >= start and qty_at(name, d) > 0]
                 if len(mvc) >= 2:
                     trends["mvc:" + name] = mvc
+    # 无行情标的(期权等):自记市值 + 台账成本 → mvc,与个股双线图口径统一
+    # (空头持仓市值/成本均为负,浮盈=市值−成本仍成立;≥2个自记点才出线)
+    for h in read_csv("holdings.csv"):
+        if h.get("东财secid"):
+            continue
+        name = h["名称"]
+        events = qty_tl.get(name) or []
+        rec = holdrec.get(name) or {}
+        if not events or len(rec) < 2:
+            continue
+        start = events[0][0]
+        mvc = [[d, round(v), round(cost_at(name, d))]
+               for d, v in sorted(rec.items())
+               if d >= start and abs(qty_at(name, d)) > 1e-9]
+        if len(mvc) >= 2:
+            trends["mvc:" + name] = mvc
+
     if changed:
         cache["_meta"] = meta
         storage.save_doc("klines_cache", cache, backup=False)
