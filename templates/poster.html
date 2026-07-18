@@ -379,6 +379,7 @@
   <div class="blk">
     <div class="sec-h">选中资产走势
       <span class="trendbar"><select id="c_trend_acct"></select>
+        <button id="c_trend_mode" style="display:none">价格</button>
         <button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all" class="on">全部</button></span>
     </div>
     <div class="pad">
@@ -1771,75 +1772,126 @@ safe('选中资产走势', ()=>{
   }
   const tc = echarts.init(document.getElementById('c_trend'));
   const hint = document.getElementById('c_trend_hint');
-  let curSeries = null, curTitle = '', curRange = 'all', curName = null, curPx = false;
+  // 三模式:mv=市值+成本双线(个股默认,期初起,台阶=加减仓,间距=浮盈) / px=价格曲线(切换,长历史) / val=市值线(期权/账户/大类兜底)
+  let curTitle = '', curRange = 'all', curName = null, curMode = 'val', curData = null;
   const RNG = {'all':1e9,'3m':66,'1m':22};
   const CSYM = {USD:'$', HKD:'HK$', CNY:'¥'};
   const fmtPx = v => v>=100 ? v.toFixed(0) : v>=10 ? v.toFixed(2) : v.toFixed(3);
-  function draw(){
-    let s = curSeries;
-    if (!s || !s.length){
-      hint.textContent = curTitle ? (curTitle+'：暂无走势数据（无行情或未记录）') : '点击持仓地图查看走势';
-      tc.clear(); return;
-    }
-    if (curRange!=='all') s = s.slice(-RNG[curRange]);
-    const meta = curPx ? ((D.pxMeta||{})[curName]||{}) : {};
-    const csym = CSYM[meta.ccy||'CNY']||'¥';
-    const FXR = {USD:D.fxUSD||1, HKD:D.fxHKD||1, CNY:1}[meta.ccy||'CNY']||1;
-    const qat = d => { let q=0; (meta.qty||[]).forEach(e=>{ if(e[0]<=d) q+=e[1]; }); return q; };
-    // 价格曲线:区间=纯价格涨跌;市值曲线:简单Dietz剔除窗口内台账净投入,加仓本金不算涨幅
-    let nbSum = 0;
-    if (!curPx && curName){
-      const nbd = (D.tradeNet||{})[curName]||{};
-      for (const d in nbd) if (d > s[0][0] && d <= s[s.length-1][0]) nbSum += nbd[d];
-    }
-    const f = s[0][1], l = s[s.length-1][1], base = f + nbSum/2;
-    const chg = base ? (l-f-nbSum)/base : 0;
-    hint.textContent = `${curTitle} ── ${s.length}点 · ${curPx?'价格 '+csym+fmtPx(l)+' · ':''}区间 ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`
-      + (nbSum ? ` · 已剔除净投入 ${wan(nbSum)}` : '');
-    // 台账买卖标记:▲加仓红 / ▽卖出绿,悬停出 数量@价·金额;价格模式锚在成交价上(偏离线=成交vs收盘)
+  const modeBtn = document.getElementById('c_trend_mode');
+  const AXIS = s => ({type:'category',data:s.map(p=>p[0]),boundaryGap:false,
+    axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans,
+      formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
+    axisLine:{lineStyle:{color:'#111',width:2}}});
+  const marksOf = (s, yOf) => {
     const dateIdx = {}; s.forEach((p,i)=>{ dateIdx[p[0]] = i; });
     const mpts = [];
     (curName ? ((D.tradeMarks||{})[curName]||[]) : []).forEach(m=>{
       const i = dateIdx[m[0]];
       if (i == null) return;
       const buy = m[1] === '买入';
-      const my = curPx ? (parseFloat(m[3])||s[i][1]) : s[i][1];
-      mpts.push({coord:[i, my], name:m[1],
+      mpts.push({coord:[i, yOf(i, m)], name:m[1],
         symbol:'triangle', symbolRotate: buy?0:180, symbolSize:14,
         itemStyle:{color: buy?'#c41e3a':'#0a7a45', borderColor:'#111', borderWidth:2},
         info:`${m[0]} ${m[1]} ${m[2]}@${m[3]||'?'}${m[4]!=null?' · '+wan(m[4]):''}`});
     });
+    return {data:mpts, label:{show:false}, emphasis:{scale:1.2},
+      tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}};
+  };
+  function draw(){
+    if (modeBtn){
+      const dual = !!(curData && curData.mv && curData.px);
+      modeBtn.style.display = dual ? '' : 'none';
+      modeBtn.classList.toggle('on', curMode==='px');
+    }
+    let s = curData ? (curMode==='mv' ? curData.mv : curMode==='px' ? curData.px : curData.val) : null;
+    if (!s || !s.length){
+      hint.textContent = curTitle ? (curTitle+'：暂无走势数据（无行情或未记录）') : '点击持仓地图查看走势';
+      tc.clear(); return;
+    }
+    if (curRange!=='all') s = s.slice(-RNG[curRange]);
+    if (curMode==='mv'){
+      // 市值面积+净投入成本阶梯线:间距按盈亏着色(盈浅红/亏浅绿),▲/▽锚市值线
+      const mv = s.map(p=>p[1]), cost = s.map(p=>p[2]);
+      const lm = mv[mv.length-1], lc = cost[cost.length-1];
+      const pnl = lm-lc, pct = lc ? pnl/lc : 0;
+      hint.textContent = `${curTitle} ── 市值 ${wan(lm)} · 净投入 ${wan(lc)} · 浮盈 ${pnl>=0?'+':'−'}${wan(Math.abs(pnl))}（${pct>=0?'+':''}${(pct*100).toFixed(1)}%）· 期初06/24起`;
+      const bandBase = s.map(p=>Math.min(p[1],p[2]));
+      const bandUp = s.map(p=>Math.max(p[1]-p[2],0));
+      const bandDn = s.map(p=>Math.max(p[2]-p[1],0));
+      const mute = {symbol:'none', lineStyle:{opacity:0}, silent:true, emphasis:{disabled:true}, tooltip:{show:false}, stack:'pnl'};
+      tc.setOption({
+        tooltip:{trigger:'axis',axisPointer:{lineStyle:{color:'#111',width:1.5,type:'dashed'}},...TIP,
+          formatter: ps=>{ const i=ps[0].dataIndex, m0=s[i][1], c0=s[i][2], d0=m0-c0;
+            return `${s[i][0]}<br>市值 ${wan(m0)} · 净投入 ${wan(c0)}<br>浮盈 ${d0>=0?'+':'−'}${wan(Math.abs(d0))}（${c0?(d0/c0*100).toFixed(1):'0.0'}%）`; }},
+        grid:{left:54,right:14,top:14,bottom:26},
+        xAxis:AXIS(s),
+        yAxis:{type:'value',scale:true,splitLine:{lineStyle:{color:'#e4e0d4'}},
+          axisLabel:{show:!window._privacy,color:'#111',fontSize:10,fontWeight:700,formatter:v=>(v/1e4).toFixed(0)+'万'}},
+        series:[
+          Object.assign({type:'line',data:bandBase,areaStyle:{opacity:0}}, mute),
+          Object.assign({type:'line',data:bandUp,areaStyle:{color:'rgba(196,30,58,.16)'}}, mute),
+          Object.assign({type:'line',data:bandDn,areaStyle:{color:'rgba(10,122,69,.16)'}}, mute),
+          {type:'line',data:cost,symbol:'none',step:'end',z:3,
+            lineStyle:{color:'#111',width:2.5,type:'dashed'}},
+          {type:'line',data:mv,symbol:'circle',symbolSize:14,showSymbol:false,z:4,
+            itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
+            emphasis:{scale:false},
+            lineStyle:{color:'#2a78d6',width:4},
+            markPoint:marksOf(s, i=>s[i][1])}
+        ]
+      });
+      return;
+    }
+    const meta = curMode==='px' ? ((D.pxMeta||{})[curName]||{}) : {};
+    const csym = CSYM[meta.ccy||'CNY']||'¥';
+    const FXR = {USD:D.fxUSD||1, HKD:D.fxHKD||1, CNY:1}[meta.ccy||'CNY']||1;
+    const qat = d => { let q=0; (meta.qty||[]).forEach(e=>{ if(e[0]<=d) q+=e[1]; }); return q; };
+    // 价格曲线:区间=纯价格涨跌;市值曲线:简单Dietz剔除窗口内台账净投入,加仓本金不算涨幅
+    const isPx = curMode==='px';
+    let nbSum = 0;
+    if (!isPx && curName){
+      const nbd = (D.tradeNet||{})[curName]||{};
+      for (const d in nbd) if (d > s[0][0] && d <= s[s.length-1][0]) nbSum += nbd[d];
+    }
+    const f = s[0][1], l = s[s.length-1][1], base = f + nbSum/2;
+    const chg = base ? (l-f-nbSum)/base : 0;
+    hint.textContent = `${curTitle} ── ${s.length}点 · ${isPx?'价格 '+csym+fmtPx(l)+' · ':''}区间 ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`
+      + (nbSum ? ` · 已剔除净投入 ${wan(nbSum)}` : '');
     tc.setOption({
       tooltip:{trigger:'axis',
         axisPointer:{lineStyle:{color:'#111',width:1.5,type:'dashed'}},...TIP,
-        formatter: curPx ? (ps=>{ const p=ps[0]; const d=s[p.dataIndex][0], q=qat(d);
+        formatter: isPx ? (ps=>{ const p=ps[0]; const d=s[p.dataIndex][0], q=qat(d);
             return `${d} · ${csym}${fmtPx(p.value)}`
               + (q>0 && !window._privacy ? `<br>市值 ${wan(p.value*q*FXR)}（${q%1?q.toFixed(2):q}份）` : ''); })
           : (ps=>{ const p=ps[0]; return `${s[p.dataIndex][0]} · ${wan(p.value)}`; })},
       grid:{left:54,right:14,top:14,bottom:26},
-      xAxis:{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
-        axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans,
-          formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
-        axisLine:{lineStyle:{color:'#111',width:2}}},
+      xAxis:AXIS(s),
       yAxis:{type:'value',scale:true,splitLine:{lineStyle:{color:'#e4e0d4'}},
-        axisLabel:{show:curPx||!window._privacy,color:'#111',fontSize:10,fontWeight:700,
-          formatter: curPx ? (v=>fmtPx(v)) : (v=>(v/1e4).toFixed(0)+'万')}},
+        axisLabel:{show:isPx||!window._privacy,color:'#111',fontSize:10,fontWeight:700,
+          formatter: isPx ? (v=>fmtPx(v)) : (v=>(v/1e4).toFixed(0)+'万')}},
       series:[{type:'line',smooth:false,data:s.map(p=>p[1]),
         symbol:'circle',symbolSize:14,showSymbol:false,   // 平时隐藏,悬停处浮现 → 对齐净值走势的小绿点
         itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
         emphasis:{scale:false},
         lineStyle:{color:'#111',width:4},
         areaStyle:{color:'rgba(42,120,214,.15)'},
-        markPoint:{data:mpts, label:{show:false}, emphasis:{scale:1.2},
-          tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}}}]
+        markPoint:marksOf(s, (i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}]
     });
   }
-  window._renderTrend = (series,title,name,isPx)=>{curSeries=series;curTitle=title;curName=name||null;curPx=!!isPx;draw();};
+  if (modeBtn) modeBtn.addEventListener('click', ()=>{
+    curMode = curMode==='px' ? (curData&&curData.mv?'mv':'val') : 'px';
+    draw();
+  });
+  window._renderTrend = (series,title,name)=>{curData={val:series||null};curTitle=title;curName=name||null;curMode='val';draw();};
   window._showTrend = (key,title)=>{
-    // 个股/ETF优先价格曲线(px:):份数变动不污染走势;无K线的(期权/账户/大类)回退市值线
+    // 个股/ETF:默认市值+成本双线(mvc:),可切价格曲线(px:);其余回退市值线
     const nm = (key&&key.indexOf('hold:')===0)?key.slice(5):null;
-    const px = nm ? (D.trends['px:'+nm]||null) : null;
-    window._renderTrend(key?(px||D.trends[key]):null,title,nm,!!px);
+    curData = {mv:nm?(D.trends['mvc:'+nm]||null):null,
+               px:nm?(D.trends['px:'+nm]||null):null,
+               val:key?(D.trends[key]||null):null};
+    curTitle = title; curName = nm;
+    curMode = curData.mv ? 'mv' : (curData.px ? 'px' : 'val');
+    draw();
   };
   const TOTAL = (D.history||[]).map(r=>[r.date, r['总净资产']]);   // 总资产走势:直接取净值历史
   window._showTotal = ()=>window._renderTrend(TOTAL.length?TOTAL:null, '总净资产');

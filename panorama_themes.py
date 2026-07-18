@@ -352,7 +352,7 @@ def render(theme_key, D=None):
           <div id="c_tree" class="chart" style="height:440px;flex:1;min-width:340px;position:relative"></div>
           <div id="c_tree_legend" style="width:160px"></div>
         </div></div>
-      <div class="card c6"><h3>选中资产走势<span id="c_trend_range" style="float:right;font-weight:400"><button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all">全部</button></span><select id="c_trend_acct" style="float:right;font-weight:400"></select></h3><div class="hint" id="c_trend_hint">点击上方图表的大类/子类/持仓，查看其走势</div><div id="c_trend" class="chart" style="height:240px"></div></div>
+      <div class="card c6"><h3>选中资产走势<span id="c_trend_range" style="float:right;font-weight:400"><button id="c_trend_mode" style="display:none">价格</button><button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all">全部</button></span><select id="c_trend_acct" style="float:right;font-weight:400"></select></h3><div class="hint" id="c_trend_hint">点击上方图表的大类/子类/持仓，查看其走势</div><div id="c_trend" class="chart" style="height:240px"></div></div>
       <div class="card c6"><h3>🏋️ 杠铃视图</h3><div class="hint">安全腿(亏不了) · 核心(多元化β) · 冒险腿(非对称) · 中间(待审视) — 安全腿可覆盖现金流缺口 {D['safetyMonths']} 个月</div><div id="c_barbell" class="chart sm"></div></div>
       <div class="card c2"><h3>地域敞口</h3><div class="hint">全资产</div><div id="c_region" class="chart sm"></div></div>
       <div class="card c2"><h3>币种敞口</h3><div class="hint">金融资产·底层FX</div><div id="c_ccy" class="chart sm"></div></div>
@@ -616,61 +616,108 @@ mkBar('c_liq',D.liq);
 (()=>{{
   const tc=echarts.init(document.getElementById('c_trend'));
   const hint=document.getElementById('c_trend_hint');
-  let curSeries=null,curTitle='',curRange='all',curName=null,curPx=false;
+  // 三模式:mv=市值+成本双线(个股默认) / px=价格曲线(切换) / val=市值线(期权/账户/大类兜底)
+  let curTitle='',curRange='all',curName=null,curMode='val',curData=null;
   const RNG={{'all':1e9,'3m':66,'1m':22}};
   const CSYM={{USD:'$',HKD:'HK$',CNY:'¥'}};
   const fmtPx=v=>v>=100?v.toFixed(0):v>=10?v.toFixed(2):v.toFixed(3);
-  function draw(){{
-    let s=curSeries;
-    if(!s||!s.length){{hint.textContent=curTitle?(curTitle+'：暂无走势数据（无行情或未记录）'):'点击上方图表的大类/子类/持仓，查看其走势';tc.clear();return;}}
-    if(curRange!=='all')s=s.slice(-RNG[curRange]);
-    const meta=curPx?((D.pxMeta||{{}})[curName]||{{}}):{{}};
-    const csym=CSYM[meta.ccy||'CNY']||'¥';
-    const FXR={{USD:D.fxUSD||1,HKD:D.fxHKD||1,CNY:1}}[meta.ccy||'CNY']||1;
-    const qat=d=>{{let q=0;(meta.qty||[]).forEach(e=>{{if(e[0]<=d)q+=e[1];}});return q;}};
-    // 价格曲线:区间=纯价格涨跌;市值曲线:简单Dietz剔除窗口内台账净投入
-    let nbSum=0;
-    if(!curPx&&curName){{const nbd=(D.tradeNet||{{}})[curName]||{{}};
-      for(const d in nbd)if(d>s[0][0]&&d<=s[s.length-1][0])nbSum+=nbd[d];}}
-    const f=s[0][1],l=s[s.length-1][1],base=f+nbSum/2,chg=base?(l-f-nbSum)/base:0;
-    hint.textContent=curTitle+' · '+s.length+'点 · '+(curPx?'价格'+csym+fmtPx(l)+' · ':'')
-      +'区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
-      +(nbSum?' · 已剔除净投入'+fmtWan(nbSum):'');
-    // 台账买卖标记:▲加仓 / ▽卖出;价格模式锚在成交价上(偏离线=成交vs收盘)
+  const modeBtn=document.getElementById('c_trend_mode');
+  const AXIS=s=>({{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
+    axisLabel:{{color:T.dim,fontSize:10,formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''}},
+    axisLine:{{lineStyle:{{color:T.grid}}}}}});
+  const marksOf=(s,yOf)=>{{
     const di={{}};s.forEach((p,i)=>{{di[p[0]]=i;}});
     const mpts=[];
     (curName?((D.tradeMarks||{{}})[curName]||[]):[]).forEach(m=>{{
       const i=di[m[0]];if(i==null)return;
       const buy=m[1]==='买入';
-      const my=curPx?(parseFloat(m[3])||s[i][1]):s[i][1];
-      mpts.push({{coord:[i,my],name:m[1],symbol:'triangle',symbolRotate:buy?0:180,
+      mpts.push({{coord:[i,yOf(i,m)],name:m[1],symbol:'triangle',symbolRotate:buy?0:180,
         symbolSize:12,itemStyle:{{color:buy?T.bad:T.good,borderColor:T.dim,borderWidth:1}},
         info:m[0]+' '+m[1]+' '+m[2]+'@'+(m[3]||'?')+(m[4]!=null?' · '+fmtWan(m[4]):'')}});
     }});
+    return {{data:mpts,label:{{show:false}},tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}};
+  }};
+  function draw(){{
+    if(modeBtn){{
+      const dual=!!(curData&&curData.mv&&curData.px);
+      modeBtn.style.display=dual?'':'none';
+      modeBtn.style.fontWeight=curMode==='px'?'700':'400';
+    }}
+    let s=curData?(curMode==='mv'?curData.mv:curMode==='px'?curData.px:curData.val):null;
+    if(!s||!s.length){{hint.textContent=curTitle?(curTitle+'：暂无走势数据（无行情或未记录）'):'点击上方图表的大类/子类/持仓，查看其走势';tc.clear();return;}}
+    if(curRange!=='all')s=s.slice(-RNG[curRange]);
+    if(curMode==='mv'){{
+      // 市值面积+净投入成本阶梯线:台阶=加减仓,间距=浮盈(盈浅红/亏浅绿)
+      const mv=s.map(p=>p[1]),cost=s.map(p=>p[2]);
+      const lm=mv[mv.length-1],lc=cost[cost.length-1],pnl=lm-lc,pct=lc?pnl/lc:0;
+      hint.textContent=curTitle+' · 市值'+fmtWan(lm)+' · 净投入'+fmtWan(lc)
+        +' · 浮盈'+(pnl>=0?'+':'−')+fmtWan(Math.abs(pnl))
+        +'('+(pct>=0?'+':'')+(pct*100).toFixed(1)+'%) · 期初06/24起';
+      const bandBase=s.map(p=>Math.min(p[1],p[2]));
+      const bandUp=s.map(p=>Math.max(p[1]-p[2],0));
+      const bandDn=s.map(p=>Math.max(p[2]-p[1],0));
+      const mute={{symbol:'none',lineStyle:{{opacity:0}},silent:true,emphasis:{{disabled:true}},tooltip:{{show:false}},stack:'pnl'}};
+      tc.setOption({{
+        tooltip:{{trigger:'axis',formatter:ps=>{{const i=ps[0].dataIndex,m0=s[i][1],c0=s[i][2],d0=m0-c0;
+          return s[i][0]+'<br>市值 '+fmtWan(m0)+' · 净投入 '+fmtWan(c0)
+            +'<br>浮盈 '+(d0>=0?'+':'−')+fmtWan(Math.abs(d0))+'('+(c0?(d0/c0*100).toFixed(1):'0.0')+'%)';}}}},
+        grid:{{left:58,right:18,top:16,bottom:26}},
+        xAxis:AXIS(s),
+        yAxis:{{type:'value',scale:true,axisLabel:{{color:T.dim,fontSize:10,formatter:v=>(v/1e4).toFixed(0)+'万'}},
+          splitLine:{{lineStyle:{{color:T.grid}}}}}},
+        series:[
+          Object.assign({{type:'line',data:bandBase,areaStyle:{{opacity:0}}}},mute),
+          Object.assign({{type:'line',data:bandUp,areaStyle:{{color:'rgba(220,38,38,.14)'}}}},mute),
+          Object.assign({{type:'line',data:bandDn,areaStyle:{{color:'rgba(22,163,74,.14)'}}}},mute),
+          {{type:'line',data:cost,symbol:'none',step:'end',z:3,lineStyle:{{color:T.dim,width:2,type:'dashed'}}}},
+          {{type:'line',data:mv,symbol:'none',z:4,lineStyle:{{color:T.line1,width:2.5}},
+            markPoint:marksOf(s,i=>s[i][1])}}
+        ]
+      }});
+      return;
+    }}
+    const isPx=curMode==='px';
+    const meta=isPx?((D.pxMeta||{{}})[curName]||{{}}):{{}};
+    const csym=CSYM[meta.ccy||'CNY']||'¥';
+    const FXR={{USD:D.fxUSD||1,HKD:D.fxHKD||1,CNY:1}}[meta.ccy||'CNY']||1;
+    const qat=d=>{{let q=0;(meta.qty||[]).forEach(e=>{{if(e[0]<=d)q+=e[1];}});return q;}};
+    // 价格曲线:区间=纯价格涨跌;市值曲线:简单Dietz剔除窗口内台账净投入
+    let nbSum=0;
+    if(!isPx&&curName){{const nbd=(D.tradeNet||{{}})[curName]||{{}};
+      for(const d in nbd)if(d>s[0][0]&&d<=s[s.length-1][0])nbSum+=nbd[d];}}
+    const f=s[0][1],l=s[s.length-1][1],base=f+nbSum/2,chg=base?(l-f-nbSum)/base:0;
+    hint.textContent=curTitle+' · '+s.length+'点 · '+(isPx?'价格'+csym+fmtPx(l)+' · ':'')
+      +'区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
+      +(nbSum?' · 已剔除净投入'+fmtWan(nbSum):'');
     tc.setOption({{
       tooltip:{{trigger:'axis',
-        formatter:curPx?(ps=>{{const p=ps[0];const d=s[p.dataIndex][0],q=qat(d);
+        formatter:isPx?(ps=>{{const p=ps[0];const d=s[p.dataIndex][0],q=qat(d);
             return d+' · '+csym+fmtPx(p.value)+(q>0?'<br>市值 '+fmtWan(p.value*q*FXR)+'（'+(q%1?q.toFixed(2):q)+'份）':'');}})
           :(ps=>{{const p=ps[0];return s[p.dataIndex][0]+' · '+fmtWan(p.value);}})}},
       grid:{{left:58,right:18,top:16,bottom:26}},
-      xAxis:{{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
-        axisLabel:{{color:T.dim,fontSize:10,formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''}},
-        axisLine:{{lineStyle:{{color:T.grid}}}}}},
+      xAxis:AXIS(s),
       yAxis:{{type:'value',scale:true,axisLabel:{{color:T.dim,fontSize:10,
-        formatter:curPx?(v=>fmtPx(v)):(v=>(v/1e4).toFixed(0)+'万')}},
+        formatter:isPx?(v=>fmtPx(v)):(v=>(v/1e4).toFixed(0)+'万')}},
         splitLine:{{lineStyle:{{color:T.grid}}}}}},
       series:[{{type:'line',smooth:true,symbol:'none',data:s.map(p=>p[1]),
         lineStyle:{{color:T.line1,width:2.5}},
         areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'33'}},{{offset:1,color:T.line1+'05'}}])}},
-        markPoint:{{data:mpts,label:{{show:false}},
-          tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}}}}]
+        markPoint:marksOf(s,(i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}}]
     }});
   }}
-  window._renderTrend=(series,title,name,isPx)=>{{curSeries=series;curTitle=title;curName=name||null;curPx=!!isPx;draw();}};
+  if(modeBtn)modeBtn.addEventListener('click',()=>{{
+    curMode=curMode==='px'?(curData&&curData.mv?'mv':'val'):'px';
+    draw();
+  }});
+  window._renderTrend=(series,title,name)=>{{curData={{val:series||null}};curTitle=title;curName=name||null;curMode='val';draw();}};
   window._showTrend=(key,title)=>{{
     const nm=(key&&key.indexOf('hold:')===0)?key.slice(5):null;
-    const px=nm?(D.trends['px:'+nm]||null):null;
-    window._renderTrend(key?(px||D.trends[key]):null,title,nm,!!px);
+    curData={{mv:nm?(D.trends['mvc:'+nm]||null):null,
+             px:nm?(D.trends['px:'+nm]||null):null,
+             val:key?(D.trends[key]||null):null}};
+    curTitle=title;curName=nm;
+    curMode=curData.mv?'mv':(curData.px?'px':'val');
+    draw();
   }};
   window._subMembers={{}};D.tree.forEach(c=>(c.children||[]).forEach(s=>{{window._subMembers[s.name]=(s.children||[]).map(x=>x.name);}}));
   window._catNames=new Set(D.tree.map(c=>c.name));

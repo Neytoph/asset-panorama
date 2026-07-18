@@ -334,8 +334,9 @@ def collect(persist_history=True, fetch_klines=True):
             time.sleep(KLINE_FETCH_GAP * (attempt + 2))   # 被限流则退避后再试
         return []
 
-    # 台账数量时间线:价格曲线自记段推价 + 前端 tooltip 历史市值(期初前数量未知,不给市值)
-    qty_tl = {}
+    # 台账数量/成本时间线:价格曲线自记段推价、市值+成本双线图(mvc:)、前端 tooltip 历史市值。
+    # 期初前数量未知 → mvc 从期初起画(零假定,用户 2026-07-18 拍板)。
+    qty_tl, cost_tl = {}, {}
     for r in history_rows:
         act = r.get("动作")
         if act not in ("期初", "买入", "卖出"):
@@ -345,12 +346,24 @@ def collect(persist_history=True, fetch_klines=True):
         except ValueError:
             continue
         nm = (r.get("名称") or "").strip()
-        qty_tl.setdefault(nm, []).append([r.get("日期") or "", -q if act == "卖出" else q])
-    for v in qty_tl.values():
-        v.sort()
+        d = r.get("日期") or ""
+        qty_tl.setdefault(nm, []).append([d, -q if act == "卖出" else q])
+        try:
+            amt = float((r.get("成交额") or "").replace(",", "").strip())
+        except ValueError:
+            amt = None
+        if amt is not None:
+            arate = fx.get((r.get("成交币种") or "").strip() or "CNY", 1.0)
+            cost_tl.setdefault(nm, []).append([d, (-amt if act == "卖出" else amt) * arate])
+    for tl in (qty_tl, cost_tl):
+        for v in tl.values():
+            v.sort()
 
     def qty_at(nm, d):
         return sum(q for dd, q in qty_tl.get(nm, []) if dd <= d)
+
+    def cost_at(nm, d):
+        return sum(a for dd, a in cost_tl.get(nm, []) if dd <= d)
 
     px_meta = {}
     for h in read_csv("holdings.csv"):
@@ -390,6 +403,16 @@ def collect(persist_history=True, fetch_klines=True):
             trends["px:" + name] = sorted([d, p] for d, p in pxd.items())
             px_meta[name] = {"ccy": {"美股": "USD", "港股": "HKD"}.get(h["市场"], "CNY"),
                              "qty": qty_tl.get(name, [])}
+            # 市值+成本双线(默认视图):市值=真价格×台账当日份数×汇率,成本=累计净投入——
+            # 台阶=加减仓,间距=浮盈。从期初(首个台账事件)起画,期初前份数未知不假定。
+            events = qty_tl.get(name) or []
+            if events:
+                start = events[0][0]
+                mvc = [[d, round(p * qty_at(name, d) * rate), round(cost_at(name, d))]
+                       for d, p in trends["px:" + name]
+                       if d >= start and qty_at(name, d) > 0]
+                if len(mvc) >= 2:
+                    trends["mvc:" + name] = mvc
     if changed:
         cache["_meta"] = meta
         storage.save_doc("klines_cache", cache, backup=False)
