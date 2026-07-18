@@ -290,6 +290,9 @@ def collect(persist_history=True, fetch_klines=True):
 
     equity = classes.get("权益", 0)
     concentrated = sum(h["value"] for h in holdings if h["type"] in SINGLE_STOCK_TYPES)
+    # 卖Put接货名义计入单股簇(期权=正股头寸的修饰,2026-07-19 定案)
+    _put_ntl, _ = metrics.option_exposures(read_csv("holdings.csv", []), fx["USD"])
+    concentrated += sum(_put_ntl.values())
     pt_equity = sum(a["value"] * pt[a["name"]]["大类"]["权益"] for a in accounts if a["name"] in pt)
     broad = sum(h["value"] for h in holdings if h["type"] == "A股权益ETF") + pt_equity
 
@@ -439,7 +442,7 @@ def collect(persist_history=True, fetch_klines=True):
     barbell = {"安全腿": 0.0, "核心": 0.0, "冒险腿": 0.0, "中间": 0.0}
     for h in holdings:
         v = h["value"]; t = h["type"]
-        if t == "美股杠杆ETF":
+        if t in ("美股杠杆ETF", "美股期权"):    # 期权=非对称杠杆敞口,不是多元化beta(空头市值为负照记)
             barbell["冒险腿"] += v
         elif t in ("A股个股", "港股个股", "美股个股"):
             barbell["核心" if h["name"] in LOWVOL_SINGLE else "冒险腿"] += v

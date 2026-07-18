@@ -10,7 +10,53 @@
 """
 import datetime
 import math
+import re
 from collections import defaultdict
+
+# ── 期权敞口(2026-07-19 定案:期权=正股头寸的修饰,不是独立资产) ────────────
+# 代码约定:{正股代码}{到期YYMMDD}{C/P}{行权价},如 RKLB261016P70 / HIMS261218C50。
+OPTION_RE = re.compile(r"^([A-Z]+)(\d{6})([CP])(\d+(?:\.\d+)?)$")
+
+
+def parse_option(code):
+    """期权代码 → {und, expiry, cp, strike};不匹配返回 None。"""
+    m = OPTION_RE.match((code or "").strip())
+    if not m:
+        return None
+    return {"und": m.group(1), "expiry": m.group(2),
+            "cp": m.group(3), "strike": float(m.group(4))}
+
+
+def option_exposures(holdings_rows, fx_usd):
+    """空头期权 → 正股敞口修正(名义口径,不做delta——半自动项目要零维护的诚实指标)。
+    卖Put:接货名义(张数×100×行权价×汇率)计入正股集中度;
+    卖Call:不加敞口,但正股可覆盖张数不足时=裸空,上涨亏损无上限 → 红色警告。
+    返回 ({正股代码: 接货名义CNY}, [警告文案])。"""
+    put_notional, warns = {}, []
+    for r in holdings_rows:
+        if (r.get("资产类型") or "") != "美股期权":
+            continue
+        opt = parse_option(r.get("代码"))
+        try:
+            qty = float(str(r.get("持有数量") or 0).replace(",", ""))
+        except ValueError:
+            continue
+        if not opt or qty >= 0:      # 只处理空头(负张数);买入的期权风险=权利金,市值口径已覆盖
+            continue
+        contracts = -qty
+        if opt["cp"] == "P":
+            put_notional[opt["und"]] = put_notional.get(opt["und"], 0.0) \
+                + contracts * 100 * opt["strike"] * fx_usd
+        else:
+            shares = sum(float(str(x.get("持有数量") or 0).replace(",", ""))
+                         for x in holdings_rows
+                         if (x.get("代码") or "") == opt["und"]
+                         and (x.get("资产类型") or "") != "美股期权")
+            covered = shares / 100.0
+            if contracts > covered + 1e-9:
+                warns.append(f"备兑Call缺口 {opt['und']}:卖出{contracts:g}张 > 正股{shares:g}股"
+                             f"仅覆盖{covered:g}张——裸空{contracts-covered:g}张,上涨亏损无上限")
+    return put_notional, warns
 
 
 # ── XIRR ──────────────────────────────────────────────────────────
@@ -362,12 +408,14 @@ def fi_plan(financial, fixed_out, monthly_saving, cfg=None,
 
 # ── IPS 操作合规审计 ──────────────────────────────────────────────
 
-def ips_check(ledger_rows, history_rows, target, band=0.05, big_trade_pct=0.05):
+def ips_check(ledger_rows, history_rows, target, band=0.05, big_trade_pct=0.05, fx=None):
     """每笔台账操作(买入/卖出)对照投资纪律:
     R1 交易必须写原因(空=违纪);
     R2 方向纪律:卖出低配大类/买入超配大类(按交易日 history 权重 vs 目标;
-       偏离超容忍带 band=违纪,带内=提示);
+       偏离超容忍带 band=违纪,带内=提示)。期权按敞口方向:卖Put=买入方向,
+       其余期权操作豁免R2(收权利金≠减权益敞口);
     R3 单笔金额 > 净资产×big_trade_pct → 提示(大额需冷静期/复核)。
+       金额按成交币种×fx折CNY;期权按接货/交割名义(张数×100×行权价),风险在名义不在权利金。
     返回按日期倒序的 [{date,name,action,rule,level,msg}]。"""
     hist = sorted((r for r in history_rows if r.get("date")), key=lambda r: r["date"])
 
@@ -396,25 +444,39 @@ def ips_check(ledger_rows, history_rows, target, band=0.05, big_trade_pct=0.05):
         if not (r.get("原因/备注") or "").strip():
             out.append({"date": d, "name": name, "action": act, "rule": "R1",
                         "level": "违纪", "msg": "无交易原因——每笔操作必须写下为什么"})
+        opt = parse_option(r.get("代码")) if (r.get("资产类型") or "") == "美股期权" else None
+        rate = (fx or {}).get((r.get("成交币种") or "").strip() or "CNY", 1.0)
         h = row_at(d)
         nw = num(h, "总净资产") if h else 0
         if h and nw > 0:
             w, tgt = num(h, cls) / nw, target.get(cls, 0)
-            if act == "卖出" and w <= tgt:
+            # 期权按敞口方向:卖Put=承接买入义务→按买入审;其余期权操作豁免R2
+            eff_act, opt_note = act, ""
+            if opt:
+                if act == "卖出" and opt["cp"] == "P":
+                    eff_act, opt_note = "买入", "(卖Put=买入方向敞口)"
+                else:
+                    eff_act = None
+            if eff_act == "卖出" and w <= tgt:
                 lvl = "违纪" if w < tgt - band else "提示"
                 out.append({"date": d, "name": name, "action": act, "rule": "R2",
                             "level": lvl,
                             "msg": f"卖出低配类({cls} {w*100:.1f}% < 目标 {tgt*100:.0f}%)——与再平衡方向相反"})
-            if act == "买入" and w >= tgt:
+            if eff_act == "买入" and w >= tgt:
                 lvl = "违纪" if w > tgt + band else "提示"
                 out.append({"date": d, "name": name, "action": act, "rule": "R2",
                             "level": lvl,
-                            "msg": f"买入超配类({cls} {w*100:.1f}% ≥ 目标 {tgt*100:.0f}%)——应定向到低配类"})
-            amt = num(r, "成交额")
+                            "msg": f"买入超配类({cls} {w*100:.1f}% ≥ 目标 {tgt*100:.0f}%)——应定向到低配类{opt_note}"})
+            if opt:
+                amt = abs(num(r, "数量")) * 100 * opt["strike"] * (fx or {}).get("USD", 1.0)
+                amt_label = "名义"
+            else:
+                amt = num(r, "成交额") * rate
+                amt_label = ""
             if amt > nw * big_trade_pct:
                 out.append({"date": d, "name": name, "action": act, "rule": "R3",
                             "level": "提示",
-                            "msg": f"单笔 ¥{amt:,.0f} 超净资产 {big_trade_pct*100:.0f}%——大额操作建议冷静期后复核"})
+                            "msg": f"单笔{amt_label} ¥{amt:,.0f} 超净资产 {big_trade_pct*100:.0f}%——大额操作建议冷静期后复核"})
     out.sort(key=lambda x: x["date"], reverse=True)
     return out
 

@@ -14,7 +14,7 @@ from pathlib import Path
 import metrics
 from portfolio_tracker import (TARGET_NETWORTH, CLASS_BANDS, DEVIATION_ALERT,
                                SINGLE_STOCK_MAX, CLUSTER_MAX_OF_EQUITY,
-                               load_json, read_csv)
+                               FX_FALLBACK, load_json, read_csv)
 
 BASE = Path(__file__).resolve().parent
 
@@ -33,7 +33,9 @@ def build():
     hist = read_csv("history.csv", [])
     ledger = read_csv("holdings_history.csv", [])
     trades = [r for r in ledger if r.get("动作") in ("买入", "卖出")]
-    findings = metrics.ips_check(ledger, hist, TARGET_NETWORTH)
+    # 零网络页面:汇率取每日估值写入 latest_snapshot 的快照值,缺失退兜底
+    fx = (storage.load_doc("latest_snapshot", {}) or {}).get("fx") or dict(FX_FALLBACK)
+    findings = metrics.ips_check(ledger, hist, TARGET_NETWORTH, fx=fx)
     n_bad = sum(1 for x in findings if x["level"] == "违纪")
     n_warn = len(findings) - n_bad
 

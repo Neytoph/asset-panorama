@@ -20,6 +20,7 @@ import urllib.request
 from pathlib import Path
 
 import storage
+import metrics
 
 BASE = Path(__file__).resolve().parent
 
@@ -455,8 +456,21 @@ def check_alerts(R):
                 alerts.append(("🔴", f"个股 {h['name']} 占净资产 {h['value']/networth:.1%}，超 10% 红线"))
         if h["type"] == "美股杠杆ETF":
             alerts.append(("🔴", f"杠杆持仓 {h['name']}：长期持有有波动损耗，建议了结"))
+    # 期权敞口修正(2026-07-19):卖Put接货名义计入个股簇;备兑Call覆盖不足=裸空红警
+    raw_rows = read_csv("holdings.csv", [])
+    put_ntl, opt_warns = metrics.option_exposures(raw_rows, R["fx"]["USD"])
+    for w in opt_warns:
+        alerts.append(("🔴", w))
+    code2name = {(x.get("代码") or ""): x.get("名称") for x in raw_rows}
+    for und, ntl in sorted(put_ntl.items()):
+        nm = code2name.get(und, und)
+        hv = next((h["value"] for h in R["holdings"] if h["name"] == nm), 0.0)
+        if equity:
+            alerts.append(("🟠", f"期权敞口 {nm}:正股 ¥{hv:,.0f} + 卖Put接货名义 ¥{ntl:,.0f}"
+                                 f" = ¥{hv+ntl:,.0f}(占权益 {(hv+ntl)/equity:.0%})"))
+        cluster += ntl
     if equity and cluster / equity > CLUSTER_MAX_OF_EQUITY:
-        alerts.append(("🟠", f"个股+杠杆合计占权益 {cluster/equity:.0%}，超 {CLUSTER_MAX_OF_EQUITY:.0%}，特质风险偏高"))
+        alerts.append(("🟠", f"个股+杠杆合计占权益 {cluster/equity:.0%}(含卖Put名义)，超 {CLUSTER_MAX_OF_EQUITY:.0%}，特质风险偏高"))
     return alerts
 
 
@@ -478,10 +492,11 @@ def persist(R):
     if fx_fallback:
         degraded.append("汇率兜底")
 
-    # latest_snapshot：当前状态总是写，带降级标记供 UI 提示
+    # latest_snapshot：当前状态总是写，带降级标记供 UI 提示。fx 供零网络页面(ips_page)折算复用
     storage.save_doc("latest_snapshot", {
         "date": today, "networth": networth, "financial": financial,
         "classes": classes, "target": TARGET_NETWORTH, "degraded": degraded,
+        "fx": {k: R["fx"].get(k) for k in ("USD", "HKD", "CNY")},
     }, backup=False)
 
     # 行情缺失会让相关持仓市值记为 0（空洞）→ 拒写历史，避免永久污染
