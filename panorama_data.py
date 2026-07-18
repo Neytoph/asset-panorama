@@ -334,6 +334,25 @@ def collect(persist_history=True, fetch_klines=True):
             time.sleep(KLINE_FETCH_GAP * (attempt + 2))   # 被限流则退避后再试
         return []
 
+    # 台账数量时间线:价格曲线自记段推价 + 前端 tooltip 历史市值(期初前数量未知,不给市值)
+    qty_tl = {}
+    for r in history_rows:
+        act = r.get("动作")
+        if act not in ("期初", "买入", "卖出"):
+            continue
+        try:
+            q = float((r.get("数量") or "").replace(",", "").strip())
+        except ValueError:
+            continue
+        nm = (r.get("名称") or "").strip()
+        qty_tl.setdefault(nm, []).append([r.get("日期") or "", -q if act == "卖出" else q])
+    for v in qty_tl.values():
+        v.sort()
+
+    def qty_at(nm, d):
+        return sum(q for dd, q in qty_tl.get(nm, []) if dd <= d)
+
+    px_meta = {}
     for h in read_csv("holdings.csv"):
         sid = h.get("东财secid")
         if not sid:
@@ -359,6 +378,18 @@ def collect(persist_history=True, fetch_klines=True):
         by_date.update(holdrec.get(name, {}))   # 自记市值优先(实际估值口径)，且能延伸到 K线尾部之后
         if by_date:
             trends["hold:" + name] = sorted([d, v] for d, v in by_date.items())
+        # 价格曲线(个股走势图用):K线价=真价格打底;K线缺的日期(当天/周末尾巴)用
+        # 市值÷台账当日份数 反推。份数变动不再污染走势——加仓只留▲标记,回溯段也不虚构市值。
+        if ks:
+            pxd = {d: px for d, px in ks}
+            for d, v in (holdrec.get(name) or {}).items():
+                if d not in pxd:
+                    q = qty_at(name, d)
+                    if q > 0 and rate:
+                        pxd[d] = round(v / (q * rate), 4)
+            trends["px:" + name] = sorted([d, p] for d, p in pxd.items())
+            px_meta[name] = {"ccy": {"美股": "USD", "港股": "HKD"}.get(h["市场"], "CNY"),
+                             "qty": qty_tl.get(name, [])}
     if changed:
         cache["_meta"] = meta
         storage.save_doc("klines_cache", cache, backup=False)
@@ -483,6 +514,7 @@ def collect(persist_history=True, fetch_klines=True):
         "history": [{"date": h["date"], "总净资产": float(h["总净资产"]),
                      "金融资产": float(h["金融资产"])} for h in history],
         "tradeNet": trade_net, "tradeMarks": trade_marks, "bigTrades": big_trades,
+        "pxMeta": px_meta,
         "tree": tree_list,
         "trends": trends,
         "barbell": barbell,

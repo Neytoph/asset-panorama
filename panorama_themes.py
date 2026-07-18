@@ -616,36 +616,48 @@ mkBar('c_liq',D.liq);
 (()=>{{
   const tc=echarts.init(document.getElementById('c_trend'));
   const hint=document.getElementById('c_trend_hint');
-  let curSeries=null,curTitle='',curRange='all',curName=null;
+  let curSeries=null,curTitle='',curRange='all',curName=null,curPx=false;
   const RNG={{'all':1e9,'3m':66,'1m':22}};
+  const CSYM={{USD:'$',HKD:'HK$',CNY:'¥'}};
+  const fmtPx=v=>v>=100?v.toFixed(0):v>=10?v.toFixed(2):v.toFixed(3);
   function draw(){{
     let s=curSeries;
     if(!s||!s.length){{hint.textContent=curTitle?(curTitle+'：暂无走势数据（无行情或未记录）'):'点击上方图表的大类/子类/持仓，查看其走势';tc.clear();return;}}
     if(curRange!=='all')s=s.slice(-RNG[curRange]);
-    // 区间收益=简单Dietz:剔除窗口内台账净投入(加仓本金不算涨幅)
+    const meta=curPx?((D.pxMeta||{{}})[curName]||{{}}):{{}};
+    const csym=CSYM[meta.ccy||'CNY']||'¥';
+    const FXR={{USD:D.fxUSD||1,HKD:D.fxHKD||1,CNY:1}}[meta.ccy||'CNY']||1;
+    const qat=d=>{{let q=0;(meta.qty||[]).forEach(e=>{{if(e[0]<=d)q+=e[1];}});return q;}};
+    // 价格曲线:区间=纯价格涨跌;市值曲线:简单Dietz剔除窗口内台账净投入
     let nbSum=0;
-    if(curName){{const nbd=(D.tradeNet||{{}})[curName]||{{}};
+    if(!curPx&&curName){{const nbd=(D.tradeNet||{{}})[curName]||{{}};
       for(const d in nbd)if(d>s[0][0]&&d<=s[s.length-1][0])nbSum+=nbd[d];}}
     const f=s[0][1],l=s[s.length-1][1],base=f+nbSum/2,chg=base?(l-f-nbSum)/base:0;
-    hint.textContent=curTitle+' · '+s.length+'点 · 区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
+    hint.textContent=curTitle+' · '+s.length+'点 · '+(curPx?'价格'+csym+fmtPx(l)+' · ':'')
+      +'区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
       +(nbSum?' · 已剔除净投入'+fmtWan(nbSum):'');
-    // 台账买卖标记:▲加仓 / ▽卖出,悬停出 数量@价·金额
+    // 台账买卖标记:▲加仓 / ▽卖出;价格模式锚在成交价上(偏离线=成交vs收盘)
     const di={{}};s.forEach((p,i)=>{{di[p[0]]=i;}});
     const mpts=[];
     (curName?((D.tradeMarks||{{}})[curName]||[]):[]).forEach(m=>{{
       const i=di[m[0]];if(i==null)return;
       const buy=m[1]==='买入';
-      mpts.push({{coord:[i,s[i][1]],name:m[1],symbol:'triangle',symbolRotate:buy?0:180,
+      const my=curPx?(parseFloat(m[3])||s[i][1]):s[i][1];
+      mpts.push({{coord:[i,my],name:m[1],symbol:'triangle',symbolRotate:buy?0:180,
         symbolSize:12,itemStyle:{{color:buy?T.bad:T.good,borderColor:T.dim,borderWidth:1}},
         info:m[0]+' '+m[1]+' '+m[2]+'@'+(m[3]||'?')+(m[4]!=null?' · '+fmtWan(m[4]):'')}});
     }});
     tc.setOption({{
-      tooltip:{{trigger:'axis',valueFormatter:v=>fmtWan(v)}},
+      tooltip:{{trigger:'axis',
+        formatter:curPx?(ps=>{{const p=ps[0];const d=s[p.dataIndex][0],q=qat(d);
+            return d+' · '+csym+fmtPx(p.value)+(q>0?'<br>市值 '+fmtWan(p.value*q*FXR)+'（'+(q%1?q.toFixed(2):q)+'份）':'');}})
+          :(ps=>{{const p=ps[0];return s[p.dataIndex][0]+' · '+fmtWan(p.value);}})}},
       grid:{{left:58,right:18,top:16,bottom:26}},
       xAxis:{{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
         axisLabel:{{color:T.dim,fontSize:10,formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''}},
         axisLine:{{lineStyle:{{color:T.grid}}}}}},
-      yAxis:{{type:'value',scale:true,axisLabel:{{color:T.dim,fontSize:10,formatter:v=>(v/1e4).toFixed(0)+'万'}},
+      yAxis:{{type:'value',scale:true,axisLabel:{{color:T.dim,fontSize:10,
+        formatter:curPx?(v=>fmtPx(v)):(v=>(v/1e4).toFixed(0)+'万')}},
         splitLine:{{lineStyle:{{color:T.grid}}}}}},
       series:[{{type:'line',smooth:true,symbol:'none',data:s.map(p=>p[1]),
         lineStyle:{{color:T.line1,width:2.5}},
@@ -654,9 +666,12 @@ mkBar('c_liq',D.liq);
           tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}}}}]
     }});
   }}
-  window._renderTrend=(series,title,name)=>{{curSeries=series;curTitle=title;curName=name||null;draw();}};
-  window._showTrend=(key,title)=>window._renderTrend(key?D.trends[key]:null,title,
-    (key&&key.indexOf('hold:')===0)?key.slice(5):null);
+  window._renderTrend=(series,title,name,isPx)=>{{curSeries=series;curTitle=title;curName=name||null;curPx=!!isPx;draw();}};
+  window._showTrend=(key,title)=>{{
+    const nm=(key&&key.indexOf('hold:')===0)?key.slice(5):null;
+    const px=nm?(D.trends['px:'+nm]||null):null;
+    window._renderTrend(key?(px||D.trends[key]):null,title,nm,!!px);
+  }};
   window._subMembers={{}};D.tree.forEach(c=>(c.children||[]).forEach(s=>{{window._subMembers[s.name]=(s.children||[]).map(x=>x.name);}}));
   window._catNames=new Set(D.tree.map(c=>c.name));
   const rb=document.getElementById('c_trend_range');
