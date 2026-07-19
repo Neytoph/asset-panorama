@@ -414,7 +414,8 @@ def ips_check(ledger_rows, history_rows, target, band=0.05, big_trade_pct=0.05, 
     R2 方向纪律:卖出低配大类/买入超配大类(按交易日 history 权重 vs 目标;
        偏离超容忍带 band=违纪,带内=提示)。期权按敞口方向:卖Put=买入方向,
        其余期权操作豁免R2(收权利金≠减权益敞口);
-    R3 单笔金额 > 净资产×big_trade_pct → 提示(大额需冷静期/复核)。
+    R3 单笔金额 > 金融资产×big_trade_pct → 提示(大额需冷静期/复核)。
+       基数用金融资产(与净值走势大额标记同口径,2026-07-19 统一;净资产被房产撑高会让阈值虚设)。
        金额按成交币种×fx折CNY;期权按接货/交割名义(张数×100×行权价),风险在名义不在权利金。
     返回按日期倒序的 [{date,name,action,rule,level,msg}]。"""
     hist = sorted((r for r in history_rows if r.get("date")), key=lambda r: r["date"])
@@ -473,10 +474,11 @@ def ips_check(ledger_rows, history_rows, target, band=0.05, big_trade_pct=0.05, 
             else:
                 amt = num(r, "成交额") * rate
                 amt_label = ""
-            if amt > nw * big_trade_pct:
+            fin = num(h, "金融资产")
+            if fin > 0 and amt > fin * big_trade_pct:
                 out.append({"date": d, "name": name, "action": act, "rule": "R3",
                             "level": "提示",
-                            "msg": f"单笔{amt_label} ¥{amt:,.0f} 超净资产 {big_trade_pct*100:.0f}%——大额操作建议冷静期后复核"})
+                            "msg": f"单笔{amt_label} ¥{amt:,.0f} 超金融资产 {big_trade_pct*100:.0f}%——大额操作建议冷静期后复核"})
     out.sort(key=lambda x: x["date"], reverse=True)
     return out
 
