@@ -394,7 +394,7 @@ def render(theme_key, D=None):
           <span id="prop-strip"></span>
         </div>
         <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
-          <div id="c_tree" class="chart" style="height:440px;flex:1;min-width:340px;position:relative"></div>
+          <div id="c_tree" class="chart" style="height:510px;flex:1;min-width:340px;position:relative"></div>
           <div id="c_tree_legend" style="width:160px"></div>
         </div></div>
       <div class="card c6"><h3>选中资产走势<span id="c_trend_range" style="float:right;font-weight:400"><button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all">全部</button></span><select id="c_trend_acct" style="float:right;font-weight:400"></select></h3><div class="hint" id="c_trend_hint">点击上方图表的大类/子类/持仓，查看其走势</div><div id="c_trend" class="chart" style="height:240px"></div></div>
@@ -509,10 +509,7 @@ window.catIcon=function(name,col){{
       children:(c.children||[]).map(s=>({{name:s.name,itemStyle:{{color:mid}},
         children:(s.children||[]).map(x=>({{name:x.name,value:x.value,itemStyle:{{color:leaf}}}}))}}))}};
   }});
-  // 每节点唯一 id → 原生 sunburstRootToNode 下钻动画按 id 精确定位(名称有同名会撞)
-  let _idc=0;
-  (function aid(ns){{ ns.forEach(n=>{{ n.id='sb'+(_idc++); if(n.children&&n.children.length) aid(n.children); }}); }})(data);
-  const finData=data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一(同批对象,id 保留)
+  const finData=data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一
   const rootArr=()=>assetMode==='fin'?finData:data;
   const rootName=()=>assetMode==='fin'?'金融资产':'净资产';
   // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
@@ -545,44 +542,28 @@ window.catIcon=function(name,col){{
   const _stack=[];   // 下钻栈:每帧 {{name,val,arr}};中心点击弹一层回上级(非直接回顶)
   const resetLbl=()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
-  const BASE_H = 440;
-  const fullOpt=(inner)=>({{
+  // 尺寸统一:中心孔 24%(≈原来点击权益那层的大小),所有层级一致,不随下钻变化
+  chart.setOption({{
     tooltip:{{trigger:'item',formatter:p=>`${{p.name}}<br>${{fmtWan(p.value)}} · ${{(p.value/total*100).toFixed(1)}}%`}},
-    series:[{{type:'sunburst',data:rootArr(),radius:[inner||'30%','99%'],center:['50%','50%'],
+    series:[{{type:'sunburst',data:rootArr(),radius:['24%','99%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{{focus:'relative'}},
-      animationDurationUpdate:600,animationEasingUpdate:'cubicOut',
       itemStyle:{{borderColor:T.panel,borderWidth:2,borderRadius:3}},
       levels:[
         {{}},
-        {{r0:'30%',r:'50%',label:{{rotate:'tangential',color:'#ffffff',fontSize:12,fontWeight:'600',
+        {{r0:'24%',r:'48%',label:{{rotate:'tangential',color:'#ffffff',fontSize:12,fontWeight:'600',
           textBorderColor:T.dark?'rgba(0,0,0,.65)':'rgba(0,0,0,0)',textBorderWidth:T.dark?2:0,
           fontFamily:'IBM Plex Sans',formatter:p=>p.name,minAngle:8}},itemStyle:{{borderWidth:2}}}},
-        {{r0:'50%',r:'72%',label:{{rotate:'tangential',color:T.dark?'#0a0e12':'#33332d',fontSize:10,
+        {{r0:'48%',r:'72%',label:{{rotate:'tangential',color:T.dark?'#0a0e12':'#33332d',fontSize:10,
           fontFamily:'IBM Plex Sans',formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8}},itemStyle:{{borderWidth:1.5}}}},
         {{r0:'72%',r:'99%',label:{{rotate:'radial',color:T.dark?'#12121a':'#4a4a44',fontSize:9.5,fontWeight:T.dark?'600':'normal',
           fontFamily:'IBM Plex Sans',formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6}},itemStyle:{{borderWidth:1}}}}
       ]
     }}]
   }});
-  chart.setOption(fullOpt());
-  const INNER=d=>d>=2?'18%':d>=1?'24%':'30%';
-  // 下钻/回退:先按深度定尺寸(派发前 resize,不打断动画),再原生 sunburstRootToNode 径向展开;
-  // id 为空=回顶层:notMerge 整体重置(viewRoot 复位到根)。
-  function zoomTo(id){{
-    const d = Math.min(_stack.length, 2);
-    el.style.height = (BASE_H + d*70) + 'px';
-    if(id){{
-      chart.setOption({{series:[{{radius:[INNER(d),'99%']}}]}});
-      chart.resize();
-      chart.dispatchAction({{type:'sunburstRootToNode', seriesIndex:0, targetNodeId:id}});
-    }} else {{
-      chart.setOption(fullOpt('30%'), true);
-      chart.resize();
-    }}
-  }}
+  const renderAt=(arr)=>chart.setOption({{series:[{{data:arr}}]}});
   lbl.addEventListener('click',()=>{{           // 返回上一级(栈空=已在顶层,不动)
     if(!_stack.length)return;
-    const f=_stack.pop();curRoot={{name:f.name,val:f.val,id:f.id}};resetLbl();zoomTo(f.id);
+    const f=_stack.pop();curRoot={{name:f.name,val:f.val}};curArr=f.arr;resetLbl();renderAt(curArr);
   }});
   chart.on('mouseover',p=>{{if(p.data&&p.value!=null)setLbl(p.name,p.value);}});
   chart.on('mouseout',resetLbl);
@@ -590,9 +571,9 @@ window.catIcon=function(name,col){{
     if(nd&&nd.children&&nd.children.length){{
       const path=pathTo(nm)||[];
       _stack.length=0;
-      _stack.push({{name:rootName(),val:total,id:null}});
-      for(let i=0;i<path.length-1;i++) _stack.push({{name:path[i].name,val:nv(path[i]),id:path[i].id}});
-      curRoot={{name:nm,val:p.value,id:nd.id}};resetLbl();zoomTo(nd.id);
+      _stack.push({{name:rootName(),val:total,arr:rootArr()}});
+      for(let i=0;i<path.length-1;i++) _stack.push({{name:path[i].name,val:nv(path[i]),arr:path[i].children}});
+      curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);
     }}
     // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
     const catmvc=window._catNames&&window._catNames.has(nm)&&(D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
@@ -631,11 +612,9 @@ window.catIcon=function(name,col){{
   function applyMode(m){{
     if(m===assetMode) return;
     assetMode=m; total=assetMode==='fin'?FIN:NW;
-    _stack.length=0; curRoot={{name:rootName(),val:total,id:null}};
+    _stack.length=0; curRoot={{name:rootName(),val:total}}; curArr=rootArr();
     document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
-    renderLegend(); updateStrip(); resetLbl();
-    el.style.height=BASE_H+'px';
-    chart.setOption(fullOpt('30%'), true); chart.resize();   // 换模式数据 + notMerge 重置到根
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
     window._showTotal&&window._showTotal();
   }}
   document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));

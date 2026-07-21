@@ -386,7 +386,7 @@
         <span id="prop-strip"></span>
       </div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <div id="c_tree" class="chart" style="height:390px;flex:1;min-width:280px;position:relative"></div>
+        <div id="c_tree" class="chart" style="height:460px;flex:1;min-width:280px;position:relative"></div>
         <div id="c_tree_legend" style="width:130px"></div>
       </div>
     </div>
@@ -1696,10 +1696,7 @@ safe('旭日图', ()=>{
       children:(c.children||[]).map(s=>({name:s.name,itemStyle:{color:mid},
         children:(s.children||[]).map(x=>({name:x.name,value:x.value,itemStyle:{color:leaf}}))}))};
   });
-  // 每个节点赋唯一 id → 原生 sunburstRootToNode 下钻动画按 id 精确定位(名称有大类/子类同名会撞)
-  let _idc = 0;
-  (function aid(ns){ ns.forEach(n=>{ n.id = 'sb'+(_idc++); if(n.children&&n.children.length) aid(n.children); }); })(data);
-  const finData = data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一(同批对象,id 保留)
+  const finData = data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一
   const rootArr = () => assetMode==='fin' ? finData : data;
   const rootName = () => assetMode==='fin' ? '金融资产' : '净资产';
   // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
@@ -1746,40 +1743,23 @@ safe('旭日图', ()=>{
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
-  const BASE_H = 390;
-  // 完整 option 工厂:回顶层用 notMerge 重置(确保 viewRoot 复位,不残留在下钻层)
-  const fullOpt = (inner) => ({
+  // 尺寸统一:中心孔 24%(≈原来点击权益那层的大小),所有层级一致,不随下钻变化
+  chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
-    series:[{type:'sunburst',data:rootArr(),radius:[inner||'30%','98%'],center:['50%','50%'],
+    series:[{type:'sunburst',data:rootArr(),radius:['24%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
-      animationDurationUpdate:600,animationEasingUpdate:'cubicOut',   // 原生径向展开时长
       itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
       levels:[
         {},
-        {r0:'30%',r:'50%',label:{rotate:'tangential',color:'#fff',fontSize:12,fontWeight:900,
+        {r0:'24%',r:'48%',label:{rotate:'tangential',color:'#fff',fontSize:12,fontWeight:900,
           formatter:p=>p.name,minAngle:8},itemStyle:{borderWidth:2.5}},
-        {r0:'50%',r:'72%',label:{rotate:'tangential',color:'#111',fontSize:10,fontWeight:700,
+        {r0:'48%',r:'72%',label:{rotate:'tangential',color:'#111',fontSize:10,fontWeight:700,
           formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8},itemStyle:{borderWidth:2}},
         {r0:'72%',r:'98%',label:{rotate:'radial',color:'#111',fontSize:9.5,fontWeight:700,
           formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1.5}}
       ]}]
   });
-  chart.setOption(fullOpt());
-  const INNER = d => d>=2?'18%':d>=1?'24%':'30%';
-  // 下钻/回退:先按深度定尺寸(派发前 resize,不打断动画),再用原生 sunburstRootToNode 径向展开。
-  // id 为空=回顶层:notMerge 整体重置(viewRoot 复位到根)。越深:卡片增高 + 中心孔缩小。
-  function zoomTo(id){
-    const d = Math.min(_stack.length, 2);
-    el.style.height = (BASE_H + d*70) + 'px';
-    if(id){
-      chart.setOption({series:[{radius:[INNER(d),'98%']}]});
-      chart.resize();
-      chart.dispatchAction({type:'sunburstRootToNode', seriesIndex:0, targetNodeId:id});
-    } else {
-      chart.setOption(fullOpt('30%'), true);   // 回顶层:notMerge 重置到根
-      chart.resize();
-    }
-  }
+  const renderAt = arr => chart.setOption({series:[{data:arr}]});
   // 右侧走势联动:大类→catmvc / 子类→submvc / 叶子→mvc或hold(与下钻/回退共用)
   function showTrendFor(nm){
     const catmvc = window._catNames && window._catNames.has(nm) && (D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
@@ -1799,7 +1779,7 @@ safe('旭日图', ()=>{
   }
   lbl.addEventListener('click',()=>{           // 返回上一级(栈空=已在顶层,不动)
     if(!_stack.length) return;
-    const f=_stack.pop(); curRoot={name:f.name,val:f.val,id:f.id}; resetLbl(); zoomTo(f.id);
+    const f=_stack.pop(); curRoot={name:f.name,val:f.val}; curArr=f.arr; resetLbl(); renderAt(curArr);
     if(_stack.length) showTrendFor(curRoot.name); else window._showTotal && window._showTotal();
   });
   chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
@@ -1807,12 +1787,12 @@ safe('旭日图', ()=>{
   chart.on('click',p=>{
     const nm = p.name, nd = p.data;
     if (nd && nd.children && nd.children.length){
-      // 按完整祖先链重建栈(每帧带 id;根帧 id=null 表示顶层),中心逐级上钻
+      // 按完整祖先链重建栈:无论逐级下钻还是从顶层直点深层,中心都能逐级上钻
       const path = pathTo(nm) || [];
       _stack.length = 0;
-      _stack.push({name:rootName(), val:total, id:null});
-      for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), id:path[i].id});
-      curRoot={name:nm,val:p.value,id:nd.id}; resetLbl(); zoomTo(nd.id);
+      _stack.push({name:rootName(), val:total, arr:rootArr()});
+      for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
+      curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children);
     }
     showTrendFor(nm);
   });
@@ -1827,11 +1807,9 @@ safe('旭日图', ()=>{
   function applyMode(m){
     if (m===assetMode) return;
     assetMode = m; total = assetMode==='fin' ? FIN : NW;
-    _stack.length = 0; curRoot = {name:rootName(), val:total, id:null};
+    _stack.length = 0; curRoot = {name:rootName(), val:total}; curArr = rootArr();
     document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
-    renderLegend(); updateStrip(); resetLbl();
-    el.style.height = BASE_H+'px';
-    chart.setOption(fullOpt('30%'), true); chart.resize();   // 换模式数据 + notMerge 重置到根
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
     window._showTotal && window._showTotal();
   }
   document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
