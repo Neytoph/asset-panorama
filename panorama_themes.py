@@ -87,6 +87,9 @@ def css(t):
   .assetseg button.on{{background:{t['line1']};color:#fff}}
   #prop-strip{{font-family:{mono};font-size:11.5px;color:{t['dim']}}}
   #prop-strip b{{color:{t['ink']}}}
+  .albadge{{vertical-align:-2px;flex:none}}
+  .albadge.pulse{{animation:albpulse 1.5s ease-in-out infinite;transform-origin:center}}
+  @keyframes albpulse{{0%,100%{{opacity:1;transform:scale(1)}}50%{{opacity:.5;transform:scale(.86)}}}}
   .banner{{background:{t['panel']};border-radius:{radius};padding:11px 16px;margin-bottom:18px;
     font-size:12.5px;line-height:1.6;color:{t['ink']};{('border:'+border) if dark else 'box-shadow:'+shadow}}}
   .foot{{margin-top:26px;text-align:center;font-size:11px;color:{t['dim']};font-family:{mono}}}
@@ -129,15 +132,38 @@ def banner_html(D, t):
     if not msgs:
         return ""
     color = t["bad"] if any(lv == "warn" for lv, _ in msgs) else t["warn"]
-    items = "　·　".join(("⚠️ " if lv == "warn" else "ℹ️ ") + m for lv, m in msgs)
+    items = "　·　".join(f'{_alert_svg(lv)} {m}' for lv, m in msgs)
     return (f'<div class="banner" style="border-left:4px solid {color}">'
             f'<b style="color:{color}">数据提示</b>　{items}</div>')
 
 
+_ALERT_KIND = {"🔴": "crit", "🟡": "warn", "🟠": "ser", "ℹ️": "info", "✅": "ok",
+               "warn": "warn", "info": "info"}
+_ALERT_COLOR = {"crit": "#dc2626", "warn": "#d97706", "ser": "#ea580c", "info": "#2563eb", "ok": "#16a34a"}
+
+
+def _alert_svg(marker):
+    """告警前导符 → 内联 SVG 徽标(危险级脉动)。"""
+    kind = _ALERT_KIND.get(marker, "ser")
+    c = _ALERT_COLOR[kind]
+    if kind == "ok":
+        glyph = ('<path d="M4.4 8.2l2.3 2.3 4.8-5.1" fill="none" stroke="#fff" '
+                 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>')
+    elif kind == "info":
+        glyph = ('<circle cx="8" cy="4.8" r="1.05" fill="#fff"/>'
+                 '<rect x="7.1" y="6.8" width="1.8" height="5" rx=".9" fill="#fff"/>')
+    else:
+        glyph = ('<rect x="7.1" y="3.6" width="1.8" height="5.4" rx=".9" fill="#fff"/>'
+                 '<circle cx="8" cy="11.5" r="1.15" fill="#fff"/>')
+    pulse = " pulse" if kind == "crit" else ""
+    return (f'<svg class="albadge{pulse}" viewBox="0 0 16 16" width="15" height="15" '
+            f'aria-hidden="true"><circle cx="8" cy="8" r="7.4" fill="{c}"/>{glyph}</svg>')
+
+
 def alerts_html(D):
-    out = [f'<div class="alert">{lvl} {msg}</div>' for lvl, msg in D["alerts"]]
-    out += [f'<div class="alert">{"⚠️" if lv=="warn" else "ℹ️"} {m}</div>' for lv, m in D["warnings"]]
-    return "".join(out) or '<div class="alert">✅ 无告警</div>'
+    out = [f'<div class="alert">{_alert_svg(lvl)} {msg}</div>' for lvl, msg in D["alerts"]]
+    out += [f'<div class="alert">{_alert_svg(lv)} {m}</div>' for lv, m in D["warnings"]]
+    return "".join(out) or f'<div class="alert">{_alert_svg("✅")} 无告警</div>'
 
 
 def positions_html(D, t):

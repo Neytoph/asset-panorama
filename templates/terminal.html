@@ -133,6 +133,9 @@
   .alert.ser { border-left-color: var(--ser); }
   .alert .ic { font-size: 13px; line-height: 1.3; }
   .alert .m { color: var(--tx-2); } .alert b { color: var(--tx); font-weight: 500; }
+  .albadge { vertical-align: -2px; flex: none; }
+  .albadge.pulse { animation: albpulse 1.5s ease-in-out infinite; transform-origin: center; }
+  @keyframes albpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.86); } }
 
   /* 图表容器 */
   .chart { width: 100%; }
@@ -548,9 +551,21 @@ function bars(el,rows,color){
   }
 })();
 
+/* 告警徽标:emoji → 内联 SVG(危险级脉动) */
+window.alertSvg = function(kind){
+  const C = {crit:'#e5484d', warn:'#e1a208', ser:'#e5711f', info:'#4b8bf5', ok:'#30a46c'};
+  const c = C[kind] || C.ser;
+  const glyph = kind==='ok'
+    ? '<path d="M4.4 8.2l2.3 2.3 4.8-5.1" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+    : kind==='info'
+      ? '<circle cx="8" cy="4.8" r="1.05" fill="#fff"/><rect x="7.1" y="6.8" width="1.8" height="5" rx=".9" fill="#fff"/>'
+      : '<rect x="7.1" y="3.6" width="1.8" height="5.4" rx=".9" fill="#fff"/><circle cx="8" cy="11.5" r="1.15" fill="#fff"/>';
+  return `<svg class="albadge ${kind==='crit'?'pulse':''}" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="7.4" fill="${c}"/>${glyph}</svg>`;
+};
+
 /* ALERTS（含数据提示 warnings） */
 (function(){
-  const ICON_CLASS = {'🔴':'crit', '🟡':'warn', '🟠':'ser', 'warn':'warn', 'info':''};
+  const ICON_CLASS = {'🔴':'crit', '🟡':'warn', '🟠':'ser', 'warn':'warn', 'info':'info', '✅':'ok'};
   const items = [];
   if (PD.fxLive === false) items.push(['warn','汇率为兜底值（非实时），美股/港股市值可能略有偏差']);
   (PD.alerts||[]).forEach(a=>items.push(a));
@@ -558,10 +573,10 @@ function bars(el,rows,color){
   document.getElementById('al-count').textContent = (PD.alerts||[]).length + ' ACTIVE';
   document.getElementById('alerts-body').innerHTML = items.length
     ? items.map(([icon,msg])=>{
-        const ic = (icon==='warn') ? '⚠️' : (icon==='info') ? 'ℹ️' : icon;
-        return `<div class="alert ${ICON_CLASS[icon]||''}"><span class="ic">${ic}</span><span class="m">${esc(msg)}</span></div>`;
+        const kind = ICON_CLASS[icon] || 'ser';
+        return `<div class="alert ${kind==='info'?'':kind}"><span class="ic">${window.alertSvg(kind)}</span><span class="m">${esc(msg)}</span></div>`;
       }).join('')
-    : '<div class="alert"><span class="ic">✅</span><span class="m">无告警</span></div>';
+    : `<div class="alert"><span class="ic">${window.alertSvg('ok')}</span><span class="m">无告警</span></div>`;
 })();
 
 /* 杠铃 mini bars */

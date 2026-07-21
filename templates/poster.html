@@ -284,6 +284,9 @@
     background: var(--red); padding: 3px 8px; transform: rotate(-3deg); }
   .badge.y { background: var(--c-gold); color: var(--ink); }
   .badge.o { background: #ec835a; }
+  /* 红牌(风险)轻脉动,把眼睛拉过去 */
+  .badge:not(.y):not(.o) { animation: badgepulse 1.5s ease-in-out infinite; }
+  @keyframes badgepulse { 0%,100% { transform: rotate(-3deg) scale(1); } 50% { transform: rotate(-3deg) scale(.93); opacity: .82; } }
 
   footer { margin-top: 22px; font-weight: 800; font-size: 11px; letter-spacing: .2em;
     display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
