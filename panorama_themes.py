@@ -101,6 +101,8 @@ def css(t):
   .cal-n{{font-family:{mono};font-weight:600;font-size:11px;color:{t['dim']}}}
   .cal-ev{{font-size:9px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:2px}}
   .sub-ico{{object-fit:contain;border-radius:4px;vertical-align:middle;flex-shrink:0}}
+  .sub-lt{{display:inline-flex;align-items:center;justify-content:center;border-radius:4px;
+    color:#fff;font-weight:700;font-size:10px;vertical-align:middle;flex-shrink:0;font-family:{mono}}}
   @media(max-width:820px){{.kpis{{grid-template-columns:repeat(2,1fr)}}.grid{{grid-template-columns:1fr}}
     .c3,.c2,.c4,.c6{{grid-column:auto}}
     .pos .nm{{width:90px}}.pos .vv,.pos .pl{{width:auto}}}}
@@ -280,7 +282,14 @@ def sub_icon_html(item, size=18):
     if p:
         return (f'<img class="sub-ico" src="{p}" width="{size}" height="{size}" '
                 f'title="{em}" alt="">')
-    return em
+    # 无 favicon → 彩色首字母章(按名哈希取色,静态占位)
+    name = str(item.get("名称") or "·")
+    h = 0
+    for ch in name:
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    ch0 = name[0] if name else "·"
+    return (f'<span class="sub-lt" style="width:{size}px;height:{size}px;'
+            f'background:hsl({h % 360} 50% 45%)" title="{em}">{ch0}</span>')
 
 
 def ins_summary_html(D, t):
@@ -473,6 +482,19 @@ function mkBar(id,obj,color){{
     ]
   }});
 }})();
+// 大类标识:内联 SVG 图标(填当前大类色),替代图例色块
+window.catIcon=function(name,col){{
+  const G={{
+    '房产':'<path d="M8 2.4 2.5 6.9V13h3.6V9.3h3.8V13h3.6V6.9z"/>',
+    '权益':'<path d="M2.6 13h2.1V8.4H2.6zM6.95 13h2.1V5.2H6.95zM11.3 13h2.1V2.8h-2.1z"/>',
+    '债券类固收':'<path d="M8 2.2 13.2 4.3v3.6c0 3-2.1 5.1-5.2 6.1C4.9 13 2.8 10.9 2.8 7.9V4.3z"/>',
+    '现金':'<circle cx="8" cy="8" r="6.3"/>',
+    '黄金':'<path d="M4.6 6.2h6.8l1.2 5.6H3.4z"/>'
+  }};
+  const g=G[name]||'<circle cx="8" cy="8" r="5"/>';
+  const yen=name==='现金'?'<text x="8" y="11.1" text-anchor="middle" font-size="8.6" font-weight="900" fill="#fff">¥</text>':'';
+  return '<svg width="14" height="14" viewBox="0 0 16 16" style="flex:none" aria-hidden="true"><g fill="'+col+'">'+g+'</g>'+yen+'</svg>';
+}};
 // 持仓旭日图 Sunburst（三层可下钻）
 (()=>{{
   const palette=T.palette, NW=D.networth, FIN=D.financial||NW;
@@ -582,7 +604,7 @@ function mkBar(id,obj,color){{
     lg.innerHTML=D.tree.filter(c=>assetMode!=='fin'||c.name!=='房产').map((c,i)=>{{
       const val=D.classes[c.name]||0,col=palette[i%palette.length];
       return '<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:12.5px">'
-        +'<i style="width:12px;height:12px;border-radius:3px;background:'+col+';flex:none"></i>'
+        +window.catIcon(c.name,col)
         +'<span style="flex:1">'+c.name+'</span>'
         +'<b style="font-family:monospace">'+(val/total*100).toFixed(1)+'%</b></div>';
     }}).join('');

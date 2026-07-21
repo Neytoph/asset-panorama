@@ -364,9 +364,10 @@ const T = {
 const CCOL = {'房产':'#9085e9','权益':'#3987e5','债券类固收':'#199e70','现金':'#00a300','黄金':'#c98500'};
 const wan = v => '¥' + (v/1e4).toFixed(1) + '万';
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const _hue = s => { let h=0; for(const ch of String(s||'·')) h=(h*31+ch.charCodeAt(0))>>>0; return h%360; };
 const chip = (it, small) => it && it.iconPath
   ? `<span class="chip${small?' s':''}"><img src="${esc(it.iconPath)}" alt=""></span>`
-  : `<span class="chip${small?' s':''}">${esc(String(it&&it.名称||'·').charAt(0))}</span>`;
+  : `<span class="chip lt${small?' s':''}" style="background:hsl(${_hue(it&&it.名称)} 48% 42%);color:#fff">${esc(String(it&&it.名称||'·').charAt(0))}</span>`;
 // 美股集合：tree 里 子类=美股 的持仓名（持仓表 US 标签用）
 const usNames = new Set();
 (D.tree||[]).forEach(c=>(c.children||[]).forEach(s=>{
@@ -550,6 +551,20 @@ function bars(el,rows,color){
        <span class="v">${(v/10000).toFixed(1)}万</span></div>`).join('');
   }
 })();
+
+/* 大类标识:内联 SVG 图标(填当前大类色),替代图例色块 */
+window.catIcon = function(name, col){
+  const G = {
+    '房产':'<path d="M8 2.4 2.5 6.9V13h3.6V9.3h3.8V13h3.6V6.9z"/>',
+    '权益':'<path d="M2.6 13h2.1V8.4H2.6zM6.95 13h2.1V5.2H6.95zM11.3 13h2.1V2.8h-2.1z"/>',
+    '债券类固收':'<path d="M8 2.2 13.2 4.3v3.6c0 3-2.1 5.1-5.2 6.1C4.9 13 2.8 10.9 2.8 7.9V4.3z"/>',
+    '现金':'<circle cx="8" cy="8" r="6.3"/>',
+    '黄金':'<path d="M4.6 6.2h6.8l1.2 5.6H3.4z"/>'
+  };
+  const g = G[name] || '<circle cx="8" cy="8" r="5"/>';
+  const yen = name==='现金' ? '<text x="8" y="11.1" text-anchor="middle" font-size="8.6" font-weight="900" fill="#0d0f14">¥</text>' : '';
+  return `<svg width="13" height="13" viewBox="0 0 16 16" style="flex:none" aria-hidden="true"><g fill="${col}">${g}</g>${yen}</svg>`;
+};
 
 /* 告警徽标:emoji → 内联 SVG(危险级脉动) */
 window.alertSvg = function(kind){
@@ -855,7 +870,7 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     lg.innerHTML = (D.tree||[]).filter(c=>assetMode!=='fin'||c.name!=='房产').map((c,i)=>{
       const val = D.classes[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
       return `<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:11.5px">
-        <i style="width:8px;height:8px;background:${col};flex:none"></i>
+        ${window.catIcon(c.name,col)}
         <span style="flex:1;color:${T.dim}">${esc(c.name)}</span>
         <b>${(val/total*100).toFixed(1)}%</b></div>`;
     }).join('');
