@@ -552,20 +552,6 @@ function bars(el,rows,color){
   }
 })();
 
-/* 大类标识:内联 SVG 图标(填当前大类色),替代图例色块 */
-window.catIcon = function(name, col){
-  const G = {
-    '房产':'<path d="M8 2.4 2.5 6.9V13h3.6V9.3h3.8V13h3.6V6.9z"/>',
-    '权益':'<path d="M2.6 13h2.1V8.4H2.6zM6.95 13h2.1V5.2H6.95zM11.3 13h2.1V2.8h-2.1z"/>',
-    '债券类固收':'<path d="M8 2.2 13.2 4.3v3.6c0 3-2.1 5.1-5.2 6.1C4.9 13 2.8 10.9 2.8 7.9V4.3z"/>',
-    '现金':'<circle cx="8" cy="8" r="6.3"/>',
-    '黄金':'<path d="M4.6 6.2h6.8l1.2 5.6H3.4z"/>'
-  };
-  const g = G[name] || '<circle cx="8" cy="8" r="5"/>';
-  const yen = name==='现金' ? '<text x="8" y="11.1" text-anchor="middle" font-size="8.6" font-weight="900" fill="#0d0f14">¥</text>' : '';
-  return `<svg width="13" height="13" viewBox="0 0 16 16" style="flex:none" aria-hidden="true"><g fill="${col}">${g}</g>${yen}</svg>`;
-};
-
 /* 告警徽标:emoji → 内联 SVG(危险级脉动) */
 window.alertSvg = function(kind){
   const C = {crit:'#e5484d', warn:'#e1a208', ser:'#e5711f', info:'#4b8bf5', ok:'#30a46c'};
@@ -862,7 +848,7 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     lg.innerHTML = (D.tree||[]).filter(c=>assetMode!=='fin'||c.name!=='房产').map((c,i)=>{
       const val = D.classes[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
       return `<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:11.5px">
-        ${window.catIcon(c.name,col)}
+        <i style="width:8px;height:8px;background:${col};flex:none"></i>
         <span style="flex:1;color:${T.dim}">${esc(c.name)}</span>
         <b>${(val/total*100).toFixed(1)}%</b></div>`;
     }).join('');
