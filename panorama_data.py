@@ -433,6 +433,82 @@ def collect(persist_history=True, fetch_klines=True):
         if len(mvc) >= 2:
             trends["mvc:" + name] = mvc
 
+    # ── 大类/子类 市值+成本双线(2026-07-21) ────────────────────────────
+    # 恒等式:成本 = 市值 − Σ可定价持仓浮盈。等价于「台账成本 + 无成本成员按账面」,
+    # 保证市值线永远等于 treemap 总额;无成本成员(投顾/理财/保险/现金/房产)按账面计入
+    # 两条线,间距只反映可定价持仓的真实浮盈。全无成本的大类成本≡市值(0.0%,占位)。
+    def _cf_lookup(series):
+        """[[date,val],...](升序)→ (query_date)->截至该日最后值(carry-forward,之前为0)。"""
+        def at(d):
+            v = 0.0
+            for dd, x in series:
+                if dd <= d:
+                    v = x
+                else:
+                    break
+            return v
+        return at
+
+    def _ledger_pnl_lookup(member_names):
+        """成员里可定价者(有 mvc)的浮盈(市值−成本)按日 carry-forward 求和。"""
+        lut = [_cf_lookup([[d, mv - c] for d, mv, c in trends["mvc:" + n]])
+               for n in member_names if ("mvc:" + n) in trends]
+        return lambda d: sum(f(d) for f in lut)
+
+    def _member_mv(n):
+        """成员的干净市值日序列:优先 mvc(历史份数×K线价,口径一致),
+        无 mvc(投顾/DRAM)退 hold:。不用裸 hold:——它平日用当前份数、
+        自记日用历史份数,份数变动的标的会凭空跳(06-25 TQQQ/RKLB 尖峰即此)。"""
+        m = trends.get("mvc:" + n)
+        return [[d, mv] for d, mv, _ in m] if m else trends.get("hold:" + n)
+
+    def _agg_mv(member_names):
+        """成员干净市值按日 carry-forward 求和 → [[date, mv],...]。"""
+        maps, dates = [], set()
+        for n in member_names:
+            s = _member_mv(n)
+            if not s:
+                continue
+            maps.append(dict(s))
+            dates.update(d for d, _ in s)
+        out, last = [], [None] * len(maps)
+        for d in sorted(dates):
+            tot = 0.0
+            for i, m in enumerate(maps):
+                if d in m:
+                    last[i] = m[d]
+                if last[i] is not None:
+                    tot += last[i]
+            out.append([d, tot])
+        return out
+
+    agg_book = {}   # {节点名: 无成本(按账面)金额@末日} 供 hint 注明
+
+    def _emit_mvc(key_prefix, node_name, mv_series, member_names, clip_start=None):
+        # clip_start:子类市值序列(K线可回溯到期初前)裁到期初起,与个股 mvc/大类同口径,
+        # 免得期初前成本线与市值线粘死(那段无成本可分)。大类用 cat:(本就从期初起),不裁。
+        if clip_start:
+            mv_series = [p for p in mv_series if p[0] >= clip_start]
+        if len(mv_series) < 2:
+            return
+        pnl_at = _ledger_pnl_lookup(member_names)
+        mvc = [[d, round(mv), round(mv - pnl_at(d))] for d, mv in mv_series]
+        trends[key_prefix + node_name] = mvc
+        led_mv_at = _cf_lookup(_agg_mv([n for n in member_names if ("mvc:" + n) in trends]))
+        last_d = mv_series[-1][0]
+        agg_book[node_name] = round(mv_series[-1][1] - led_mv_at(last_d))
+
+    for cat, subs_map in tree.items():
+        members_cat = [x["name"] for slist in subs_map.values() for x in slist]
+        cat_series = trends.get("cat:" + cat)
+        if cat_series:
+            _emit_mvc("catmvc:", cat, cat_series, members_cat)
+        for sub, members in subs_map.items():
+            names = [x["name"] for x in members]
+            starts = [qty_tl[n][0][0] for n in names if qty_tl.get(n)]
+            _emit_mvc("submvc:", sub, _agg_mv(names), names,
+                      clip_start=min(starts) if starts else None)
+
     if changed:
         cache["_meta"] = meta
         storage.save_doc("klines_cache", cache, backup=False)
@@ -559,6 +635,7 @@ def collect(persist_history=True, fetch_klines=True):
         "tradeNet": trade_net, "tradeMarks": trade_marks, "bigTrades": big_trades,
         "pxMeta": px_meta,
         "tree": tree_list,
+        "aggBook": agg_book,
         "trends": trends,
         "barbell": barbell,
         "safetyMonths": safety_months,

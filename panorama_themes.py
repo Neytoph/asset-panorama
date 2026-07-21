@@ -489,25 +489,18 @@ function mkBar(id,obj,color){{
   chart.on('mouseout',resetLbl);
   chart.on('click',p=>{{const nm=p.name,nd=p.data;
     if(nd&&nd.children&&nd.children.length){{curRoot={{name:nm,val:p.value}};resetLbl();renderAt(nd.children);}}
-    if(window._catNames&&window._catNames.has(nm)&&D.trends['cat:'+nm])window._showTrend&&window._showTrend('cat:'+nm,nm);
+    // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
+    const catmvc=window._catNames&&window._catNames.has(nm)&&(D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
+    const submvc=window._subMembers&&window._subMembers[nm]&&D.trends['submvc:'+nm];
+    if(catmvc)window._renderTrend(catmvc,nm,nm);
+    else if(submvc)window._renderTrend(submvc,nm,nm);
     else if(window._subMembers&&window._subMembers[nm]){{
-      const memAll=window._subMembers[nm];
-      const memM=memAll.filter(n=>D.trends['mvc:'+n]);
-      const memV=memAll.filter(n=>!D.trends['mvc:'+n]&&D.trends['hold:'+n]);
-      if(memM.length&&!memV.length){{
-        const dset=new Set();
-        const maps=memM.map(n=>{{const o={{}};D.trends['mvc:'+n].forEach(a=>{{o[a[0]]=a;dset.add(a[0]);}});return o;}});
-        const ax=Array.from(dset).sort(),last=new Array(maps.length).fill(null);
-        const series=ax.map(d=>{{let mv=0,c=0;for(let i=0;i<maps.length;i++){{if(maps[i][d])last[i]=maps[i][d];if(last[i]){{mv+=last[i][1];c+=last[i][2];}}}}return [d,mv,c];}});
-        window._renderTrend(series,nm);}}
-      else if(memM.length+memV.length){{
-        const mem=memAll.filter(n=>D.trends['hold:'+n]);
-        const dset=new Set();
-        const maps=mem.map(n=>{{const o={{}};D.trends['hold:'+n].forEach(a=>{{o[a[0]]=a[1];dset.add(a[0]);}});return o;}});
-        const ax=Array.from(dset).sort(),last=new Array(maps.length).fill(null);
-        const series=ax.map(d=>{{let s=0;for(let i=0;i<maps.length;i++){{if(maps[i][d]!=null)last[i]=maps[i][d];if(last[i]!=null)s+=last[i];}}return [d,s];}});
-        window._renderTrend(series,nm,null,mem);}}
-      else window._renderTrend&&window._renderTrend(null,nm);}}
+      const mem=window._subMembers[nm].filter(n=>D.trends['hold:'+n]);
+      const dset=new Set();
+      const maps=mem.map(n=>{{const o={{}};D.trends['hold:'+n].forEach(a=>{{o[a[0]]=a[1];dset.add(a[0]);}});return o;}});
+      const ax=Array.from(dset).sort(),last=new Array(maps.length).fill(null);
+      const series=ax.map(d=>{{let s=0;for(let i=0;i<maps.length;i++){{if(maps[i][d]!=null)last[i]=maps[i][d];if(last[i]!=null)s+=last[i];}}return [d,s];}});
+      window._renderTrend(series.length?series:null,nm,null,mem);}}
     else if(D.trends['hold:'+nm])window._showTrend&&window._showTrend('hold:'+nm,nm);
     else window._showTrend&&window._showTrend(null,nm);}});
   const lg=document.getElementById('c_tree_legend');
@@ -654,9 +647,11 @@ mkBar('c_liq',D.liq);
       // 市值面积+净投入成本阶梯线:台阶=加减仓,间距=浮盈(盈浅红/亏浅绿)
       const mv=s.map(p=>p[1]),cost=s.map(p=>p[2]);
       const lm=mv[mv.length-1],lc=cost[cost.length-1],pnl=lm-lc,pct=lc?pnl/lc:0;
+      const book=(D.aggBook||{{}})[curName]||0;
       hint.textContent=curTitle+' · 市值'+fmtWan(lm)+' · 净投入'+fmtWan(lc)
         +' · 浮盈'+(pnl>=0?'+':'−')+fmtWan(Math.abs(pnl))
-        +'('+(pct>=0?'+':'')+(pct*100).toFixed(1)+'%) · 期初06/24起';
+        +'('+(pct>=0?'+':'')+(pct*100).toFixed(1)+'%) · 起'+s[0][0].slice(5)
+        +(book>0?' · 含'+fmtWan(book)+'按账面':'');
       const bandBase=s.map(p=>Math.min(p[1],p[2]));
       const bandUp=s.map(p=>Math.max(p[1]-p[2],0));
       const bandDn=s.map(p=>Math.max(p[2]-p[1],0));
@@ -673,7 +668,7 @@ mkBar('c_liq',D.liq);
           Object.assign({{type:'line',data:bandBase,areaStyle:{{opacity:0}}}},mute),
           Object.assign({{type:'line',data:bandUp,areaStyle:{{color:'rgba(220,38,38,.14)'}}}},mute),
           Object.assign({{type:'line',data:bandDn,areaStyle:{{color:'rgba(22,163,74,.14)'}}}},mute),
-          {{type:'line',data:cost,symbol:'none',step:'end',z:3,lineStyle:{{color:T.dim,width:2,type:'dashed'}}}},
+          {{type:'line',data:cost,symbol:'none',z:3,lineStyle:{{color:T.dim,width:2,type:'dashed'}}}},
           {{type:'line',data:mv,symbol:'none',z:4,lineStyle:{{color:T.line1,width:2.5}},
             markPoint:marksOf(s,i=>s[i][1])}}
         ]

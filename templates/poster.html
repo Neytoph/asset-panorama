@@ -1050,16 +1050,29 @@ safe('净值走势', function(){
   const svg=document.getElementById('spark');
   if(!n){ svg.innerHTML=''; document.getElementById('spark-cap').innerHTML=''; return; }
   document.getElementById('spark-sub').textContent = 'NET WORTH · '+n+'D · 万元';
-  const W=430,HT=170,P={t:14,r:10,b:10,l:10};
+  const W=430,HT=170,P={t:14,r:12,b:22,l:34};
   const minV=Math.min(...H), maxV=Math.max(...H);
   const pad=(maxV-minV)*0.15 || Math.abs(maxV)*0.02 || 1;
   const lo=minV-pad, hi=maxV+pad;
   const x=i=>P.l+(W-P.l-P.r)*i/Math.max(1,n-1);
   const y=v=>P.t+(HT-P.t-P.b)*(1-(v-lo)/(hi-lo));
-  const pts=H.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
-  let g=`<polyline points="${pts}" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
-  const pk=H.indexOf(Math.max(...H));
   const fmtDate = d => (d||'').slice(5).replace('-','/');
+  // 横纵坐标:Y=万元刻度(自适应区间,不强制0基线) X=日期
+  let g='';
+  const STEPS=4;
+  for(let k=0;k<=STEPS;k++){
+    const v=lo+(hi-lo)*k/STEPS, yy=y(v);
+    g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#ddd7c6" stroke-width="1"/>`;
+    g+=`<text x="${P.l-4}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="#8a8172">${v.toFixed(0)}</text>`;
+  }
+  const xn=Math.min(n-1,4);
+  for(let k=0;k<=xn;k++){
+    const i=Math.round((n-1)*k/Math.max(1,xn));
+    g+=`<text x="${x(i).toFixed(1)}" y="${HT-6}" text-anchor="${k===0?'start':k===xn?'end':'middle'}" font-size="9" font-weight="700" fill="#8a8172">${fmtDate(DATE[i])}</text>`;
+  }
+  const pts=H.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
+  g+=`<polyline points="${pts}" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const pk=H.indexOf(Math.max(...H));
   g+=`<circle cx="${x(pk)}" cy="${y(H[pk])}" r="7" fill="var(--c-gold)" stroke="#111" stroke-width="3"><title>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</title></circle>`;
   g+=`<circle cx="${x(n-1)}" cy="${y(H[n-1])}" r="7" fill="var(--red)" stroke="#111" stroke-width="3"><title>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</title></circle>`;
   // 大额交易标记(单笔≥金融资产5%):金菱形,悬停出明细——小额定投不标,避免密密麻麻
@@ -1700,27 +1713,18 @@ safe('旭日图', ()=>{
   chart.on('click',p=>{
     const nm = p.name, nd = p.data;
     if (nd && nd.children && nd.children.length){ curRoot={name:nm,val:p.value}; resetLbl(); renderAt(nd.children); }
-    if (window._catNames && window._catNames.has(nm) && D.trends['cat:'+nm]) window._showTrend && window._showTrend('cat:'+nm,nm);
-    else if (window._subMembers && window._subMembers[nm]) {
-      const memAll = window._subMembers[nm];
-      const memM = memAll.filter(n=>D.trends['mvc:'+n]);
-      const memV = memAll.filter(n=>!D.trends['mvc:'+n]&&D.trends['hold:'+n]);
-      if (memM.length && !memV.length){
-        // 全员有市值+成本序列 → 聚合双线(carry-forward;成员建仓前计0)
-        const dset = new Set();
-        const maps = memM.map(n=>{const o={};D.trends['mvc:'+n].forEach(a=>{o[a[0]]=a;dset.add(a[0]);});return o;});
-        const ax = Array.from(dset).sort(), last = new Array(maps.length).fill(null);
-        const series = ax.map(d=>{let mv=0,c=0;for(let i=0;i<maps.length;i++){if(maps[i][d])last[i]=maps[i][d];if(last[i]){mv+=last[i][1];c+=last[i][2];}}return [d,mv,c];});
-        window._renderTrend(series,nm);
-      } else if (memM.length+memV.length){
-        // 混合(个别成员缺台账双线) → 市值单线,区间仍按成员合计剔净投入
-        const mem = memAll.filter(n=>D.trends['hold:'+n]);
-        const dset = new Set();
-        const maps = mem.map(n=>{const o={};D.trends['hold:'+n].forEach(a=>{o[a[0]]=a[1];dset.add(a[0]);});return o;});
-        const ax = Array.from(dset).sort(), last = new Array(maps.length).fill(null);
-        const series = ax.map(d=>{let s=0;for(let i=0;i<maps.length;i++){if(maps[i][d]!=null)last[i]=maps[i][d];if(last[i]!=null)s+=last[i];}return [d,s];});
-        window._renderTrend(series,nm,null,mem);
-      } else window._renderTrend && window._renderTrend(null,nm);
+    // 大类→catmvc: / 子类→submvc:(服务端预聚合的市值+成本双线) / 叶子→mvc:或hold:
+    const catmvc = window._catNames && window._catNames.has(nm) && (D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
+    const submvc = window._subMembers && window._subMembers[nm] && D.trends['submvc:'+nm];
+    if (catmvc) window._renderTrend(catmvc, nm, nm);
+    else if (submvc) window._renderTrend(submvc, nm, nm);
+    else if (window._subMembers && window._subMembers[nm]) {   // 兜底:子类无预聚合 → 成员市值单线
+      const mem = window._subMembers[nm].filter(n=>D.trends['hold:'+n]);
+      const dset = new Set();
+      const maps = mem.map(n=>{const o={};D.trends['hold:'+n].forEach(a=>{o[a[0]]=a[1];dset.add(a[0]);});return o;});
+      const ax = Array.from(dset).sort(), last = new Array(maps.length).fill(null);
+      const series = ax.map(d=>{let s=0;for(let i=0;i<maps.length;i++){if(maps[i][d]!=null)last[i]=maps[i][d];if(last[i]!=null)s+=last[i];}return [d,s];});
+      window._renderTrend(series.length?series:null, nm, null, mem);
     }
     else if (D.trends['hold:'+nm]) window._showTrend && window._showTrend('hold:'+nm,nm);
     else window._showTrend && window._showTrend(null,nm);
@@ -1818,7 +1822,9 @@ safe('选中资产走势', ()=>{
       const mv = s.map(p=>p[1]), cost = s.map(p=>p[2]);
       const lm = mv[mv.length-1], lc = cost[cost.length-1];
       const pnl = lm-lc, pct = lc ? pnl/lc : 0;
-      hint.textContent = `${curTitle} ── 市值 ${wan(lm)} · 净投入 ${wan(lc)} · 浮盈 ${pnl>=0?'+':'−'}${wan(Math.abs(pnl))}（${pct>=0?'+':''}${(pct*100).toFixed(1)}%）· 期初06/24起`;
+      const book = (D.aggBook||{})[curName]||0;
+      hint.textContent = `${curTitle} ── 市值 ${wan(lm)} · 净投入 ${wan(lc)} · 浮盈 ${pnl>=0?'+':'−'}${wan(Math.abs(pnl))}（${pct>=0?'+':''}${(pct*100).toFixed(1)}%）· 起 ${s[0][0].slice(5)}`
+        + (book>0 ? ` · 含${wan(book)}按账面(投顾/理财等无台账成本)` : '');
       const bandBase = s.map(p=>Math.min(p[1],p[2]));
       const bandUp = s.map(p=>Math.max(p[1]-p[2],0));
       const bandDn = s.map(p=>Math.max(p[2]-p[1],0));
@@ -1835,7 +1841,7 @@ safe('选中资产走势', ()=>{
           Object.assign({type:'line',data:bandBase,areaStyle:{opacity:0}}, mute),
           Object.assign({type:'line',data:bandUp,areaStyle:{color:'rgba(196,30,58,.16)'}}, mute),
           Object.assign({type:'line',data:bandDn,areaStyle:{color:'rgba(10,122,69,.16)'}}, mute),
-          {type:'line',data:cost,symbol:'none',step:'end',z:3,
+          {type:'line',data:cost,symbol:'none',z:3,
             lineStyle:{color:'#111',width:2.5,type:'dashed'}},
           {type:'line',data:mv,symbol:'circle',symbolSize:14,showSymbol:false,z:4,
             itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
