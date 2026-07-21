@@ -259,7 +259,7 @@
 
 <div class="grid2">
   <div class="panel c7">
-    <div class="phead"><span>MAP ─ 持仓地图</span><span class="sub">大类→子类→持仓 · 点击下钻/联动 · 中心返回</span></div>
+    <div class="phead"><span>MAP ─ 持仓地图</span><span class="sub">大类→子类→持仓 · 点击下钻/联动 · 中心回上级</span></div>
     <div class="pbody">
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div id="c_tree" class="chart" style="height:400px;flex:1;min-width:300px;position:relative"></div>
@@ -733,7 +733,7 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
   const el = document.getElementById('c_tree');
   const chart = echarts.init(el);
   const lbl = document.createElement('div');
-  lbl.title = '点击返回最上层';
+  lbl.title = '点击返回上一级';
   lbl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
     +'width:120px;height:120px;border-radius:50%;display:flex;flex-direction:column;'
     +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
@@ -745,6 +745,8 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     +`<div style="font-size:15px;font-weight:700">${wan(val)}</div>`
     +`<div style="font-size:10px;color:${T.faint}">${(val/total*100).toFixed(1)}%</div>`; };
   let curRoot = {name:'净资产',val:total};
+  let curArr = data;
+  const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
   chart.setOption({
@@ -763,12 +765,15 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
       ]}]
   });
   const renderAt = arr => chart.setOption({series:[{data:arr}]});
-  lbl.addEventListener('click',()=>{renderAt(data);curRoot={name:'净资产',val:total};resetLbl();});
+  lbl.addEventListener('click',()=>{           // 返回上一级(栈空=已在顶层,不动)
+    if(!_stack.length) return;
+    const f=_stack.pop(); curRoot={name:f.name,val:f.val}; curArr=f.arr; resetLbl(); renderAt(curArr);
+  });
   chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
   chart.on('mouseout',resetLbl);
   chart.on('click',p=>{
     const nm = p.name, nd = p.data;
-    if (nd && nd.children && nd.children.length){ curRoot={name:nm,val:p.value}; resetLbl(); renderAt(nd.children); }
+    if (nd && nd.children && nd.children.length){ _stack.push({name:curRoot.name,val:curRoot.val,arr:curArr}); curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children); }
     // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
     const catmvc = window._catNames && window._catNames.has(nm) && (D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
     const submvc = window._subMembers && window._subMembers[nm] && D.trends['submvc:'+nm];

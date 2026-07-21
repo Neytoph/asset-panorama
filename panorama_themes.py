@@ -347,7 +347,7 @@ def render(theme_key, D=None):
     <div class="grid">
       <div class="card c3"><h3>资产构成</h3><div class="hint">净资产 ¥{wan(D['networth'])} · 环形=大类占比</div><div id="c_donut" class="chart"></div></div>
       <div class="card c3"><h3>净值走势</h3><div class="hint">总净资产 vs 金融资产</div><div id="c_line" class="chart"></div></div>
-      <div class="card c6"><h3>持仓地图 · 旭日图</h3><div class="hint">大类 → 子类 → 持仓 · 点击逐层下钻（点中心返回）· 悬停看明细</div>
+      <div class="card c6"><h3>持仓地图 · 旭日图</h3><div class="hint">大类 → 子类 → 持仓 · 点击逐层下钻（点中心回上级）· 悬停看明细</div>
         <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
           <div id="c_tree" class="chart" style="height:440px;flex:1;min-width:340px;position:relative"></div>
           <div id="c_tree_legend" style="width:160px"></div>
@@ -453,7 +453,7 @@ function mkBar(id,obj,color){{
   const chart=echarts.init(el);
   el.style.position='relative';
   const lbl=document.createElement('div');
-  lbl.title='点击返回最上层';
+  lbl.title='点击返回上一级';
   lbl.style.cssText='position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
     +'width:132px;height:132px;border-radius:50%;display:flex;flex-direction:column;'
     +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
@@ -463,6 +463,8 @@ function mkBar(id,obj,color){{
     +'</div><div style="font-size:17px;font-weight:600">'+fmtWan(val)
     +'</div><div style="font-size:12px;color:'+T.dim+'">'+(val/total*100).toFixed(1)+'%</div>';}};
   let curRoot={{name:'净资产',val:total}};
+  let curArr=data;
+  const _stack=[];   // 下钻栈:每帧 {{name,val,arr}};中心点击弹一层回上级(非直接回顶)
   const resetLbl=()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
   const opt={{
@@ -484,11 +486,14 @@ function mkBar(id,obj,color){{
   }};
   chart.setOption(opt);
   const renderAt=(arr)=>chart.setOption({{series:[{{data:arr}}]}});
-  lbl.addEventListener('click',()=>{{renderAt(data);curRoot={{name:'净资产',val:total}};resetLbl();}});
+  lbl.addEventListener('click',()=>{{           // 返回上一级(栈空=已在顶层,不动)
+    if(!_stack.length)return;
+    const f=_stack.pop();curRoot={{name:f.name,val:f.val}};curArr=f.arr;resetLbl();renderAt(curArr);
+  }});
   chart.on('mouseover',p=>{{if(p.data&&p.value!=null)setLbl(p.name,p.value);}});
   chart.on('mouseout',resetLbl);
   chart.on('click',p=>{{const nm=p.name,nd=p.data;
-    if(nd&&nd.children&&nd.children.length){{curRoot={{name:nm,val:p.value}};resetLbl();renderAt(nd.children);}}
+    if(nd&&nd.children&&nd.children.length){{_stack.push({{name:curRoot.name,val:curRoot.val,arr:curArr}});curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);}}
     // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
     const catmvc=window._catNames&&window._catNames.has(nm)&&(D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
     const submvc=window._subMembers&&window._subMembers[nm]&&D.trends['submvc:'+nm];
