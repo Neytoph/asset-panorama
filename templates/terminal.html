@@ -774,7 +774,10 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
       children:(c.children||[]).map(s=>({name:s.name,itemStyle:{color:mid},
         children:(s.children||[]).map(x=>({name:x.name,value:x.value,itemStyle:{color:leaf}}))}))};
   });
-  const finData = data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一
+  // 每节点唯一 id → 原生 sunburstRootToNode 下钻动画按 id 精确定位(名称有同名会撞)
+  let _idc = 0;
+  (function aid(ns){ ns.forEach(n=>{ n.id = 'sb'+(_idc++); if(n.children&&n.children.length) aid(n.children); }); })(data);
+  const finData = data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一(同批对象,id 保留)
   const rootArr = () => assetMode==='fin' ? finData : data;
   const rootName = () => assetMode==='fin' ? '金融资产' : '净资产';
   // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
@@ -808,11 +811,12 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
-  chart.setOption({
+  const BASE_H = 400;
+  const fullOpt = (inner) => ({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
-    series:[{type:'sunburst',data:rootArr(),radius:['30%','98%'],center:['50%','50%'],
+    series:[{type:'sunburst',data:rootArr(),radius:[inner||'30%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
-      animationDurationUpdate:550,animationEasingUpdate:'cubicOut',   // 下钻/回退的原生径向过渡
+      animationDurationUpdate:600,animationEasingUpdate:'cubicOut',
       itemStyle:{borderColor:'#0d0f14',borderWidth:2,borderRadius:1},
       levels:[
         {},
@@ -824,18 +828,25 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
           formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1}}
       ]}]
   });
-  const renderAt = arr => chart.setOption({series:[{data:arr}]});
-  // 越深越大:面板增高 + 中心孔缩小,层数越深叶子扇区越舒展(回顶复原)
-  const BASE_H = 400;
-  function syncView(){
+  chart.setOption(fullOpt());
+  const INNER = d => d>=2?'18%':d>=1?'24%':'30%';
+  // 下钻/回退:先按深度定尺寸(派发前 resize,不打断动画),再原生 sunburstRootToNode 径向展开;
+  // id 为空=回顶层:notMerge 整体重置(viewRoot 复位到根)。
+  function zoomTo(id){
     const d = Math.min(_stack.length, 2);
     el.style.height = (BASE_H + d*70) + 'px';
-    chart.setOption({series:[{radius:[d>=2?'18%':d>=1?'24%':'30%','98%']}]});
-    chart.resize();
+    if(id){
+      chart.setOption({series:[{radius:[INNER(d),'98%']}]});
+      chart.resize();
+      chart.dispatchAction({type:'sunburstRootToNode', seriesIndex:0, targetNodeId:id});
+    } else {
+      chart.setOption(fullOpt('30%'), true);
+      chart.resize();
+    }
   }
   lbl.addEventListener('click',()=>{           // 返回上一级(栈空=已在顶层,不动)
     if(!_stack.length) return;
-    const f=_stack.pop(); curRoot={name:f.name,val:f.val}; curArr=f.arr; resetLbl(); renderAt(curArr); syncView();
+    const f=_stack.pop(); curRoot={name:f.name,val:f.val,id:f.id}; resetLbl(); zoomTo(f.id);
   });
   chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
   chart.on('mouseout',resetLbl);
@@ -844,9 +855,9 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     if (nd && nd.children && nd.children.length){
       const path = pathTo(nm) || [];
       _stack.length = 0;
-      _stack.push({name:rootName(), val:total, arr:rootArr()});
-      for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
-      curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children); syncView();
+      _stack.push({name:rootName(), val:total, id:null});
+      for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), id:path[i].id});
+      curRoot={name:nm,val:p.value,id:nd.id}; resetLbl(); zoomTo(nd.id);
     }
     // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
     const catmvc = window._catNames && window._catNames.has(nm) && (D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
@@ -887,9 +898,11 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
   function applyMode(m){
     if (m===assetMode) return;
     assetMode = m; total = assetMode==='fin' ? FIN : NW;
-    _stack.length = 0; curRoot = {name:rootName(), val:total}; curArr = rootArr();
+    _stack.length = 0; curRoot = {name:rootName(), val:total, id:null};
     document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
-    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr); syncView();
+    renderLegend(); updateStrip(); resetLbl();
+    el.style.height = BASE_H+'px';
+    chart.setOption(fullOpt('30%'), true); chart.resize();   // 换模式数据 + notMerge 重置到根
     window._showTotal && window._showTotal();
   }
   document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
