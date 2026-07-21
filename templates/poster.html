@@ -368,7 +368,7 @@
 
 <div class="main2">
   <div class="blk lead">
-    <div class="sec-h">持仓地图 <small>点击下钻 · 中心返回 · 联动右图</small></div>
+    <div class="sec-h">持仓地图 <small>点击下钻 · 中心回上级 · 联动右图</small></div>
     <div class="pad">
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div id="c_tree" class="chart" style="height:390px;flex:1;min-width:280px;position:relative"></div>
@@ -1676,7 +1676,7 @@ safe('旭日图', ()=>{
   const el = document.getElementById('c_tree');
   const chart = echarts.init(el);
   const lbl = document.createElement('div');
-  lbl.title = '点击返回最上层';
+  lbl.title = '点击返回上一级';
   lbl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
     +'width:118px;height:118px;border-radius:50%;display:flex;flex-direction:column;'
     +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
@@ -1688,6 +1688,8 @@ safe('旭日图', ()=>{
     +`<div style="font-size:15px">${wan(val)}</div>`
     +`<div style="font-size:10.5px;font-weight:800">${(val/total*100).toFixed(1)}%</div>`; };
   let curRoot = {name:'净资产',val:total};
+  let curArr = data;
+  const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
   chart.setOption({
@@ -1706,14 +1708,8 @@ safe('旭日图', ()=>{
       ]}]
   });
   const renderAt = arr => chart.setOption({series:[{data:arr}]});
-  lbl.addEventListener('click',()=>{renderAt(data);curRoot={name:'净资产',val:total};resetLbl();
-    window._showTotal && window._showTotal();});   // 回到顶层 → 右侧联动总资产走势
-  chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
-  chart.on('mouseout',resetLbl);
-  chart.on('click',p=>{
-    const nm = p.name, nd = p.data;
-    if (nd && nd.children && nd.children.length){ curRoot={name:nm,val:p.value}; resetLbl(); renderAt(nd.children); }
-    // 大类→catmvc: / 子类→submvc:(服务端预聚合的市值+成本双线) / 叶子→mvc:或hold:
+  // 右侧走势联动:大类→catmvc / 子类→submvc / 叶子→mvc或hold(与下钻/回退共用)
+  function showTrendFor(nm){
     const catmvc = window._catNames && window._catNames.has(nm) && (D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
     const submvc = window._subMembers && window._subMembers[nm] && D.trends['submvc:'+nm];
     if (catmvc) window._renderTrend(catmvc, nm, nm);
@@ -1728,6 +1724,18 @@ safe('旭日图', ()=>{
     }
     else if (D.trends['hold:'+nm]) window._showTrend && window._showTrend('hold:'+nm,nm);
     else window._showTrend && window._showTrend(null,nm);
+  }
+  lbl.addEventListener('click',()=>{           // 返回上一级(栈空=已在顶层,不动)
+    if(!_stack.length) return;
+    const f=_stack.pop(); curRoot={name:f.name,val:f.val}; curArr=f.arr; resetLbl(); renderAt(curArr);
+    if(_stack.length) showTrendFor(curRoot.name); else window._showTotal && window._showTotal();
+  });
+  chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
+  chart.on('mouseout',resetLbl);
+  chart.on('click',p=>{
+    const nm = p.name, nd = p.data;
+    if (nd && nd.children && nd.children.length){ _stack.push({name:curRoot.name,val:curRoot.val,arr:curArr}); curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children); }
+    showTrendFor(nm);
   });
 });
 
