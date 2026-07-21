@@ -1729,6 +1729,7 @@ safe('旭日图', ()=>{
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
     series:[{type:'sunburst',data:rootArr(),radius:['30%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
+      animationDurationUpdate:550,animationEasingUpdate:'cubicOut',   // 下钻/回退的原生径向过渡
       itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
       levels:[
         {},
@@ -1741,6 +1742,14 @@ safe('旭日图', ()=>{
       ]}]
   });
   const renderAt = arr => chart.setOption({series:[{data:arr}]});
+  // 越深越大:卡片增高 + 中心孔缩小,层数越深叶子扇区越舒展(回顶复原)
+  const BASE_H = 390;
+  function syncView(){
+    const d = Math.min(_stack.length, 2);
+    el.style.height = (BASE_H + d*70) + 'px';
+    chart.setOption({series:[{radius:[d>=2?'18%':d>=1?'24%':'30%','98%']}]});
+    chart.resize();
+  }
   // 右侧走势联动:大类→catmvc / 子类→submvc / 叶子→mvc或hold(与下钻/回退共用)
   function showTrendFor(nm){
     const catmvc = window._catNames && window._catNames.has(nm) && (D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
@@ -1760,7 +1769,7 @@ safe('旭日图', ()=>{
   }
   lbl.addEventListener('click',()=>{           // 返回上一级(栈空=已在顶层,不动)
     if(!_stack.length) return;
-    const f=_stack.pop(); curRoot={name:f.name,val:f.val}; curArr=f.arr; resetLbl(); renderAt(curArr);
+    const f=_stack.pop(); curRoot={name:f.name,val:f.val}; curArr=f.arr; resetLbl(); renderAt(curArr); syncView();
     if(_stack.length) showTrendFor(curRoot.name); else window._showTotal && window._showTotal();
   });
   chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
@@ -1773,7 +1782,7 @@ safe('旭日图', ()=>{
       _stack.length = 0;
       _stack.push({name:rootName(), val:total, arr:rootArr()});
       for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
-      curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children);
+      curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children); syncView();
     }
     showTrendFor(nm);
   });
@@ -1790,7 +1799,7 @@ safe('旭日图', ()=>{
     assetMode = m; total = assetMode==='fin' ? FIN : NW;
     _stack.length = 0; curRoot = {name:rootName(), val:total}; curArr = rootArr();
     document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
-    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr); syncView();
     window._showTotal && window._showTotal();
   }
   document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));

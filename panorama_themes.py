@@ -498,6 +498,7 @@ function mkBar(id,obj,color){{
     tooltip:{{trigger:'item',formatter:p=>`${{p.name}}<br>${{fmtWan(p.value)}} · ${{(p.value/total*100).toFixed(1)}}%`}},
     series:[{{type:'sunburst',data:rootArr(),radius:['30%','99%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{{focus:'relative'}},
+      animationDurationUpdate:550,animationEasingUpdate:'cubicOut',
       itemStyle:{{borderColor:T.panel,borderWidth:2,borderRadius:3}},
       levels:[
         {{}},
@@ -513,9 +514,17 @@ function mkBar(id,obj,color){{
   }};
   chart.setOption(opt);
   const renderAt=(arr)=>chart.setOption({{series:[{{data:arr}}]}});
+  // 越深越大:卡片增高 + 中心孔缩小,层数越深叶子扇区越舒展(回顶复原)
+  const BASE_H = 440;
+  function syncView(){{
+    const d = Math.min(_stack.length, 2);
+    el.style.height = (BASE_H + d*70) + 'px';
+    chart.setOption({{series:[{{radius:[d>=2?'18%':d>=1?'24%':'30%','99%']}}]}});
+    chart.resize();
+  }}
   lbl.addEventListener('click',()=>{{           // 返回上一级(栈空=已在顶层,不动)
     if(!_stack.length)return;
-    const f=_stack.pop();curRoot={{name:f.name,val:f.val}};curArr=f.arr;resetLbl();renderAt(curArr);
+    const f=_stack.pop();curRoot={{name:f.name,val:f.val}};curArr=f.arr;resetLbl();renderAt(curArr);syncView();
   }});
   chart.on('mouseover',p=>{{if(p.data&&p.value!=null)setLbl(p.name,p.value);}});
   chart.on('mouseout',resetLbl);
@@ -525,7 +534,7 @@ function mkBar(id,obj,color){{
       _stack.length=0;
       _stack.push({{name:rootName(),val:total,arr:rootArr()}});
       for(let i=0;i<path.length-1;i++) _stack.push({{name:path[i].name,val:nv(path[i]),arr:path[i].children}});
-      curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);
+      curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);syncView();
     }}
     // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
     const catmvc=window._catNames&&window._catNames.has(nm)&&(D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
@@ -566,7 +575,7 @@ function mkBar(id,obj,color){{
     assetMode=m; total=assetMode==='fin'?FIN:NW;
     _stack.length=0; curRoot={{name:rootName(),val:total}}; curArr=rootArr();
     document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
-    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr); syncView();
     window._showTotal&&window._showTotal();
   }}
   document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
