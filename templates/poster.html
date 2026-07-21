@@ -1664,6 +1664,18 @@ safe('旭日图', ()=>{
       children:(c.children||[]).map(s=>({name:s.name,itemStyle:{color:mid},
         children:(s.children||[]).map(x=>({name:x.name,value:x.value,itemStyle:{color:leaf}}))}))};
   });
+  // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
+  const nv = n => n.value!=null ? n.value : (n.children||[]).reduce((s,c)=>s+nv(c),0);
+  const pathTo = nm => {
+    for(const c of data){
+      if(c.name===nm) return [c];
+      for(const s of (c.children||[])){
+        if(s.name===nm) return [c,s];
+        for(const x of (s.children||[])) if(x.name===nm) return [c,s,x];
+      }
+    }
+    return null;
+  };
   const lg = document.getElementById('c_tree_legend');
   if (lg) lg.innerHTML = (D.tree||[]).map((c,i)=>{
     const val = (D.classes||{})[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
@@ -1734,7 +1746,14 @@ safe('旭日图', ()=>{
   chart.on('mouseout',resetLbl);
   chart.on('click',p=>{
     const nm = p.name, nd = p.data;
-    if (nd && nd.children && nd.children.length){ _stack.push({name:curRoot.name,val:curRoot.val,arr:curArr}); curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children); }
+    if (nd && nd.children && nd.children.length){
+      // 按完整祖先链重建栈:无论逐级下钻还是从顶层直点深层,中心都能逐级上钻
+      const path = pathTo(nm) || [];
+      _stack.length = 0;
+      _stack.push({name:'净资产', val:total, arr:data});
+      for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
+      curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children);
+    }
     showTrendFor(nm);
   });
 });
