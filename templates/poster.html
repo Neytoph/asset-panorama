@@ -52,6 +52,14 @@
     cursor: pointer; margin-left: 12px; box-shadow: 2px 2px 0 var(--ink); }
   .mosaic-back:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 var(--ink); }
   .mosaic-path { font-weight: 800; font-size: 12px; margin-left: 8px; opacity: .7; }
+  /* 资产范围切换(仅金融/全部) */
+  .assetseg { display: inline-flex; border: 2.5px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+  .assetseg button { font: 900 11px/1 "Helvetica Neue","PingFang SC",system-ui,sans-serif;
+    letter-spacing: .04em; padding: 6px 12px; border: 0; background: #fff; color: var(--ink); cursor: pointer; }
+  .assetseg button + button { border-left: 2.5px solid var(--ink); }
+  .assetseg button.on { background: var(--ink); color: #f4f1ea; }
+  #prop-strip { font-size: 11.5px; font-weight: 800; color: #6b6252; }
+  #prop-strip b { color: var(--ink); }
   .hm { position: absolute; inset: 0; z-index: 6; }
   .hm-float { position: absolute; z-index: 9; width: 280px; height: 190px;
     background: #fff; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
@@ -370,6 +378,10 @@
   <div class="blk lead">
     <div class="sec-h">持仓地图 <small>点击下钻 · 中心回上级 · 联动右图</small></div>
     <div class="pad">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="assetseg" id="asset-seg"><button data-m="fin" class="on">仅金融</button><button data-m="all">全部资产</button></span>
+        <span id="prop-strip"></span>
+      </div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div id="c_tree" class="chart" style="height:390px;flex:1;min-width:280px;position:relative"></div>
         <div id="c_tree_legend" style="width:130px"></div>
@@ -1656,7 +1668,9 @@ const TIP = {backgroundColor:'#111', borderWidth:0,
 
 /* 旭日图（下钻 + 联动） */
 safe('旭日图', ()=>{
-  const total = D.networth;
+  const NW = D.networth, FIN = D.financial||NW;
+  let assetMode = 'fin';                 // 'fin' 仅金融(默认,房产不入环) | 'all' 全部资产
+  let total = assetMode==='fin' ? FIN : NW;
   const data = (D.tree||[]).map((c,i)=>{
     const base = CCOL[c.name]||T.palette[i%T.palette.length];
     const mid = lighten(base,0.30), leaf = lighten(base,0.55);
@@ -1664,6 +1678,9 @@ safe('旭日图', ()=>{
       children:(c.children||[]).map(s=>({name:s.name,itemStyle:{color:mid},
         children:(s.children||[]).map(x=>({name:x.name,value:x.value,itemStyle:{color:leaf}}))}))};
   });
+  const finData = data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一
+  const rootArr = () => assetMode==='fin' ? finData : data;
+  const rootName = () => assetMode==='fin' ? '金融资产' : '净资产';
   // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
   const nv = n => n.value!=null ? n.value : (n.children||[]).reduce((s,c)=>s+nv(c),0);
   const pathTo = nm => {
@@ -1677,13 +1694,17 @@ safe('旭日图', ()=>{
     return null;
   };
   const lg = document.getElementById('c_tree_legend');
-  if (lg) lg.innerHTML = (D.tree||[]).map((c,i)=>{
-    const val = (D.classes||{})[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
-    return `<div style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12.5px;font-weight:800">
-      <i style="width:12px;height:12px;border:2px solid #111;background:${col};flex:none"></i>
-      <span style="flex:1">${esc(c.name)}</span>
-      <span style="font-weight:900">${(val/total*100).toFixed(1)}%</span></div>`;
-  }).join('');
+  function renderLegend(){
+    if (!lg) return;
+    lg.innerHTML = (D.tree||[]).filter(c=>assetMode!=='fin'||c.name!=='房产').map((c,i)=>{
+      const val = (D.classes||{})[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
+      return `<div style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:12.5px;font-weight:800">
+        <i style="width:12px;height:12px;border:2px solid #111;background:${col};flex:none"></i>
+        <span style="flex:1">${esc(c.name)}</span>
+        <span style="font-weight:900">${(val/total*100).toFixed(1)}%</span></div>`;
+    }).join('');
+  }
+  renderLegend();
   if (!HAS_EC) { ecFallback('c_tree'); return; }
   const el = document.getElementById('c_tree');
   const chart = echarts.init(el);
@@ -1699,14 +1720,14 @@ safe('旭日图', ()=>{
     `<div style="font-size:10.5px;font-weight:800">${esc(name)}</div>`
     +`<div style="font-size:15px">${wan(val)}</div>`
     +`<div style="font-size:10.5px;font-weight:800">${(val/total*100).toFixed(1)}%</div>`; };
-  let curRoot = {name:'净资产',val:total};
-  let curArr = data;
+  let curRoot = {name:rootName(),val:total};
+  let curArr = rootArr();
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
-    series:[{type:'sunburst',data,radius:['30%','98%'],center:['50%','50%'],
+    series:[{type:'sunburst',data:rootArr(),radius:['30%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
       itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
       levels:[
@@ -1750,12 +1771,30 @@ safe('旭日图', ()=>{
       // 按完整祖先链重建栈:无论逐级下钻还是从顶层直点深层,中心都能逐级上钻
       const path = pathTo(nm) || [];
       _stack.length = 0;
-      _stack.push({name:'净资产', val:total, arr:data});
+      _stack.push({name:rootName(), val:total, arr:rootArr()});
       for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
       curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children);
     }
     showTrendFor(nm);
   });
+  // 资产范围切换:仅金融(默认)↔ 全部资产;房产摘要条随之显隐
+  function updateStrip(){
+    const ps = document.getElementById('prop-strip');
+    if (!ps) return;
+    ps.innerHTML = assetMode==='fin'
+      ? `房产净值 <b>${wan((D.classes||{})['房产']||0)}</b> · LTV <b>${((D.ltv||0)*100).toFixed(0)}%</b> · <span style="opacity:.65">不入环</span>`
+      : '';
+  }
+  function applyMode(m){
+    if (m===assetMode) return;
+    assetMode = m; total = assetMode==='fin' ? FIN : NW;
+    _stack.length = 0; curRoot = {name:rootName(), val:total}; curArr = rootArr();
+    document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
+    window._showTotal && window._showTotal();
+  }
+  document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
+  updateStrip();
 });
 
 /* 现金流月度走势 */

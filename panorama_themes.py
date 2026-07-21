@@ -81,6 +81,12 @@ def css(t):
     border:1px solid {t['grid']};background:{t['panel']};color:{t['ink']};border-radius:6px;cursor:pointer}}
   #c_trend_acct{{font-family:{mono};font-size:11.5px;margin-right:12px;padding:3px 8px;
     border:1px solid {t['grid']};background:{t['panel']};color:{t['ink']};border-radius:6px;cursor:pointer}}
+  .assetseg{{display:inline-flex;border:1px solid {t['grid']};border-radius:7px;overflow:hidden}}
+  .assetseg button{{font-family:{mono};font-size:11.5px;padding:4px 12px;border:0;
+    background:{t['panel']};color:{t['dim']};cursor:pointer}}
+  .assetseg button.on{{background:{t['line1']};color:#fff}}
+  #prop-strip{{font-family:{mono};font-size:11.5px;color:{t['dim']}}}
+  #prop-strip b{{color:{t['ink']}}}
   .banner{{background:{t['panel']};border-radius:{radius};padding:11px 16px;margin-bottom:18px;
     font-size:12.5px;line-height:1.6;color:{t['ink']};{('border:'+border) if dark else 'box-shadow:'+shadow}}}
   .foot{{margin-top:26px;text-align:center;font-size:11px;color:{t['dim']};font-family:{mono}}}
@@ -348,6 +354,10 @@ def render(theme_key, D=None):
       <div class="card c3"><h3>资产构成</h3><div class="hint">净资产 ¥{wan(D['networth'])} · 环形=大类占比</div><div id="c_donut" class="chart"></div></div>
       <div class="card c3"><h3>净值走势</h3><div class="hint">总净资产 vs 金融资产</div><div id="c_line" class="chart"></div></div>
       <div class="card c6"><h3>持仓地图 · 旭日图</h3><div class="hint">大类 → 子类 → 持仓 · 点击逐层下钻（点中心回上级）· 悬停看明细</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+          <span class="assetseg" id="asset-seg"><button data-m="fin" class="on">仅金融</button><button data-m="all">全部资产</button></span>
+          <span id="prop-strip"></span>
+        </div>
         <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
           <div id="c_tree" class="chart" style="height:440px;flex:1;min-width:340px;position:relative"></div>
           <div id="c_tree_legend" style="width:160px"></div>
@@ -439,7 +449,9 @@ function mkBar(id,obj,color){{
 }})();
 // 持仓旭日图 Sunburst（三层可下钻）
 (()=>{{
-  const palette=T.palette, total=D.networth;
+  const palette=T.palette, NW=D.networth, FIN=D.financial||NW;
+  let assetMode='fin';                 // 'fin' 仅金融(默认,房产不入环) | 'all' 全部资产
+  let total = assetMode==='fin' ? FIN : NW;
   const lighten=(hex,a)=>{{const n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255,
     m=v=>Math.round(v+(255-v)*a);return 'rgb('+m(r)+','+m(g)+','+m(b)+')';}};
   const CCOL={{'房产':palette[0],'权益':palette[1],'债券类固收':palette[2],'现金':palette[3],'黄金':palette[4]}};
@@ -449,6 +461,9 @@ function mkBar(id,obj,color){{
       children:(c.children||[]).map(s=>({{name:s.name,itemStyle:{{color:mid}},
         children:(s.children||[]).map(x=>({{name:x.name,value:x.value,itemStyle:{{color:leaf}}}}))}}))}};
   }});
+  const finData=data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一
+  const rootArr=()=>assetMode==='fin'?finData:data;
+  const rootName=()=>assetMode==='fin'?'金融资产':'净资产';
   // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
   const nv=n=>n.value!=null?n.value:(n.children||[]).reduce((s,c)=>s+nv(c),0);
   const pathTo=nm=>{{
@@ -474,14 +489,14 @@ function mkBar(id,obj,color){{
   const setLbl=(name,val)=>{{lbl.innerHTML='<div style="font-size:12px;color:'+T.dim+'">'+name
     +'</div><div style="font-size:17px;font-weight:600">'+fmtWan(val)
     +'</div><div style="font-size:12px;color:'+T.dim+'">'+(val/total*100).toFixed(1)+'%</div>';}};
-  let curRoot={{name:'净资产',val:total}};
-  let curArr=data;
+  let curRoot={{name:rootName(),val:total}};
+  let curArr=rootArr();
   const _stack=[];   // 下钻栈:每帧 {{name,val,arr}};中心点击弹一层回上级(非直接回顶)
   const resetLbl=()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
   const opt={{
     tooltip:{{trigger:'item',formatter:p=>`${{p.name}}<br>${{fmtWan(p.value)}} · ${{(p.value/total*100).toFixed(1)}}%`}},
-    series:[{{type:'sunburst',data,radius:['30%','99%'],center:['50%','50%'],
+    series:[{{type:'sunburst',data:rootArr(),radius:['30%','99%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{{focus:'relative'}},
       itemStyle:{{borderColor:T.panel,borderWidth:2,borderRadius:3}},
       levels:[
@@ -508,7 +523,7 @@ function mkBar(id,obj,color){{
     if(nd&&nd.children&&nd.children.length){{
       const path=pathTo(nm)||[];
       _stack.length=0;
-      _stack.push({{name:'净资产',val:total,arr:data}});
+      _stack.push({{name:rootName(),val:total,arr:rootArr()}});
       for(let i=0;i<path.length-1;i++) _stack.push({{name:path[i].name,val:nv(path[i]),arr:path[i].children}});
       curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);
     }}
@@ -527,13 +542,35 @@ function mkBar(id,obj,color){{
     else if(D.trends['hold:'+nm])window._showTrend&&window._showTrend('hold:'+nm,nm);
     else window._showTrend&&window._showTrend(null,nm);}});
   const lg=document.getElementById('c_tree_legend');
-  if(lg){{lg.innerHTML=D.tree.map((c,i)=>{{
-    const val=D.classes[c.name]||0,col=palette[i%palette.length];
-    return '<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:12.5px">'
-      +'<i style="width:12px;height:12px;border-radius:3px;background:'+col+';flex:none"></i>'
-      +'<span style="flex:1">'+c.name+'</span>'
-      +'<b style="font-family:monospace">'+(val/total*100).toFixed(1)+'%</b></div>';
-  }}).join('');}}
+  function renderLegend(){{
+    if(!lg) return;
+    lg.innerHTML=D.tree.filter(c=>assetMode!=='fin'||c.name!=='房产').map((c,i)=>{{
+      const val=D.classes[c.name]||0,col=palette[i%palette.length];
+      return '<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:12.5px">'
+        +'<i style="width:12px;height:12px;border-radius:3px;background:'+col+';flex:none"></i>'
+        +'<span style="flex:1">'+c.name+'</span>'
+        +'<b style="font-family:monospace">'+(val/total*100).toFixed(1)+'%</b></div>';
+    }}).join('');
+  }}
+  renderLegend();
+  // 资产范围切换:仅金融(默认)↔ 全部资产;房产摘要条随之显隐
+  function updateStrip(){{
+    const ps=document.getElementById('prop-strip');
+    if(!ps) return;
+    ps.innerHTML=assetMode==='fin'
+      ? '房产净值 <b>'+fmtWan((D.classes||{{}})['房产']||0)+'</b> · LTV <b>'+((D.ltv||0)*100).toFixed(0)+'%</b> · <span style="opacity:.65">不入环</span>'
+      : '';
+  }}
+  function applyMode(m){{
+    if(m===assetMode) return;
+    assetMode=m; total=assetMode==='fin'?FIN:NW;
+    _stack.length=0; curRoot={{name:rootName(),val:total}}; curArr=rootArr();
+    document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
+    window._showTotal&&window._showTotal();
+  }}
+  document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
+  updateStrip();
 }})();
 mkBar('c_region',D.regionAll);
 mkBar('c_ccy',D.ccy);

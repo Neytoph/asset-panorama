@@ -144,6 +144,14 @@
     background: var(--panel-2); color: var(--tx-2); cursor: pointer; }
   .trendbar button:hover { border-color: var(--amber); color: var(--amber); }
   .trendbar button.on { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  /* 资产范围切换 */
+  .assetseg { display: inline-flex; }
+  .assetseg button { font: 10.5px "SF Mono", Menlo, monospace; letter-spacing: .08em;
+    padding: 3px 10px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--tx-2); cursor: pointer; }
+  .assetseg button + button { border-left: 0; }
+  .assetseg button.on { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  #prop-strip { font: 10.5px "SF Mono", Menlo, monospace; color: var(--tx-3); }
+  #prop-strip b { color: var(--tx-1); }
 
   /* 订阅图标：有 favicon 无边框；字母章轻描边 */
   .chip { display: inline-flex; align-items: center; justify-content: center;
@@ -261,6 +269,10 @@
   <div class="panel c7">
     <div class="phead"><span>MAP ─ 持仓地图</span><span class="sub">大类→子类→持仓 · 点击下钻/联动 · 中心回上级</span></div>
     <div class="pbody">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="assetseg" id="asset-seg"><button data-m="fin" class="on">仅金融</button><button data-m="all">全部资产</button></span>
+        <span id="prop-strip"></span>
+      </div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <div id="c_tree" class="chart" style="height:400px;flex:1;min-width:300px;position:relative"></div>
         <div id="c_tree_legend" style="width:140px"></div>
@@ -720,7 +732,9 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
 
 /* 旭日图（下钻 + 联动） */
 (()=>{
-  const total = D.networth;
+  const NW = D.networth, FIN = D.financial||NW;
+  let assetMode = 'fin';                 // 'fin' 仅金融(默认,房产不入环) | 'all' 全部资产
+  let total = assetMode==='fin' ? FIN : NW;
   const lighten = (hex,a)=>{const n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255,
     f=v=>Math.round(v+(255-v)*a);return `rgb(${f(r)},${f(g)},${f(b)})`;};
   const data = (D.tree||[]).map((c,i)=>{
@@ -730,6 +744,9 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
       children:(c.children||[]).map(s=>({name:s.name,itemStyle:{color:mid},
         children:(s.children||[]).map(x=>({name:x.name,value:x.value,itemStyle:{color:leaf}}))}))};
   });
+  const finData = data.filter(c=>c.name!=='房产');   // 仅金融:剔房产,占比按金融资产重归一
+  const rootArr = () => assetMode==='fin' ? finData : data;
+  const rootName = () => assetMode==='fin' ? '金融资产' : '净资产';
   // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
   const nv = n => n.value!=null ? n.value : (n.children||[]).reduce((s,c)=>s+nv(c),0);
   const pathTo = nm => {
@@ -756,14 +773,14 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     `<div style="font-size:10px;color:${T.faint}">${esc(name)}</div>`
     +`<div style="font-size:15px;font-weight:700">${wan(val)}</div>`
     +`<div style="font-size:10px;color:${T.faint}">${(val/total*100).toFixed(1)}%</div>`; };
-  let curRoot = {name:'净资产',val:total};
-  let curArr = data;
+  let curRoot = {name:rootName(),val:total};
+  let curArr = rootArr();
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
-    series:[{type:'sunburst',data,radius:['30%','98%'],center:['50%','50%'],
+    series:[{type:'sunburst',data:rootArr(),radius:['30%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
       itemStyle:{borderColor:'#0d0f14',borderWidth:2,borderRadius:1},
       levels:[
@@ -788,7 +805,7 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     if (nd && nd.children && nd.children.length){
       const path = pathTo(nm) || [];
       _stack.length = 0;
-      _stack.push({name:'净资产', val:total, arr:data});
+      _stack.push({name:rootName(), val:total, arr:rootArr()});
       for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
       curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children);
     }
@@ -809,13 +826,35 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     else window._showTrend && window._showTrend(null,nm);
   });
   const lg = document.getElementById('c_tree_legend');
-  if (lg) lg.innerHTML = (D.tree||[]).map((c,i)=>{
-    const val = D.classes[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
-    return `<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:11.5px">
-      <i style="width:8px;height:8px;background:${col};flex:none"></i>
-      <span style="flex:1;color:${T.dim}">${esc(c.name)}</span>
-      <b>${(val/total*100).toFixed(1)}%</b></div>`;
-  }).join('');
+  function renderLegend(){
+    if (!lg) return;
+    lg.innerHTML = (D.tree||[]).filter(c=>assetMode!=='fin'||c.name!=='房产').map((c,i)=>{
+      const val = D.classes[c.name]||0, col = CCOL[c.name]||T.palette[i%T.palette.length];
+      return `<div style="display:flex;align-items:center;gap:7px;margin:9px 0;font-size:11.5px">
+        <i style="width:8px;height:8px;background:${col};flex:none"></i>
+        <span style="flex:1;color:${T.dim}">${esc(c.name)}</span>
+        <b>${(val/total*100).toFixed(1)}%</b></div>`;
+    }).join('');
+  }
+  renderLegend();
+  // 资产范围切换:仅金融(默认)↔ 全部资产;房产摘要条随之显隐
+  function updateStrip(){
+    const ps = document.getElementById('prop-strip');
+    if (!ps) return;
+    ps.innerHTML = assetMode==='fin'
+      ? `房产净值 <b>${wan((D.classes||{})['房产']||0)}</b> · LTV <b>${((D.ltv||0)*100).toFixed(0)}%</b> · <span style="opacity:.65">不入环</span>`
+      : '';
+  }
+  function applyMode(m){
+    if (m===assetMode) return;
+    assetMode = m; total = assetMode==='fin' ? FIN : NW;
+    _stack.length = 0; curRoot = {name:rootName(), val:total}; curArr = rootArr();
+    document.querySelectorAll('#asset-seg button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+    renderLegend(); updateStrip(); resetLbl(); renderAt(curArr);
+    window._showTotal && window._showTotal();
+  }
+  document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
+  updateStrip();
 })();
 
 /* 储蓄率 gauge */
