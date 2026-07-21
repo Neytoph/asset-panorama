@@ -449,6 +449,18 @@ function mkBar(id,obj,color){{
       children:(c.children||[]).map(s=>({{name:s.name,itemStyle:{{color:mid}},
         children:(s.children||[]).map(x=>({{name:x.name,value:x.value,itemStyle:{{color:leaf}}}}))}}))}};
   }});
+  // 节点求值 + 按名找完整祖先链(下钻栈按整条路径重建,直点深层也能逐级上钻)
+  const nv=n=>n.value!=null?n.value:(n.children||[]).reduce((s,c)=>s+nv(c),0);
+  const pathTo=nm=>{{
+    for(const c of data){{
+      if(c.name===nm) return [c];
+      for(const s of (c.children||[])){{
+        if(s.name===nm) return [c,s];
+        for(const x of (s.children||[])) if(x.name===nm) return [c,s,x];
+      }}
+    }}
+    return null;
+  }};
   const el=document.getElementById('c_tree');
   const chart=echarts.init(el);
   el.style.position='relative';
@@ -493,7 +505,13 @@ function mkBar(id,obj,color){{
   chart.on('mouseover',p=>{{if(p.data&&p.value!=null)setLbl(p.name,p.value);}});
   chart.on('mouseout',resetLbl);
   chart.on('click',p=>{{const nm=p.name,nd=p.data;
-    if(nd&&nd.children&&nd.children.length){{_stack.push({{name:curRoot.name,val:curRoot.val,arr:curArr}});curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);}}
+    if(nd&&nd.children&&nd.children.length){{
+      const path=pathTo(nm)||[];
+      _stack.length=0;
+      _stack.push({{name:'净资产',val:total,arr:data}});
+      for(let i=0;i<path.length-1;i++) _stack.push({{name:path[i].name,val:nv(path[i]),arr:path[i].children}});
+      curRoot={{name:nm,val:p.value}};curArr=nd.children;resetLbl();renderAt(nd.children);
+    }}
     // 大类→catmvc: / 子类→submvc:(服务端预聚合市值+成本双线) / 叶子→mvc:或hold:
     const catmvc=window._catNames&&window._catNames.has(nm)&&(D.trends['catmvc:'+nm]||D.trends['cat:'+nm]);
     const submvc=window._subMembers&&window._subMembers[nm]&&D.trends['submvc:'+nm];
