@@ -6,6 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>资产全景 · POSTER</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<!-- 试验:旭日图借用经典配色的字体(IBM Plex Sans/Mono);需联网,离线回退系统字体 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   :root {
@@ -1714,35 +1717,35 @@ safe('旭日图', ()=>{
   const chart = echarts.init(el);
   const lbl = document.createElement('div');
   lbl.title = '点击返回上一级';
+  // 中心标签借经典配色的柔和样式:无黑边/投影,IBM Plex Mono,尺寸 12/17/12
   lbl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
-    +'width:118px;height:118px;border-radius:50%;display:flex;flex-direction:column;'
+    +'width:132px;height:132px;border-radius:50%;display:flex;flex-direction:column;'
     +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
-    +'z-index:5;line-height:1.4;background:#f4f1ea;color:#111;font-weight:900;'
-    +'border:3px solid #111;box-shadow:3px 3px 0 #111';
+    +"z-index:5;line-height:1.4;font-family:'IBM Plex Mono',monospace;background:#f4f1ea;color:#111";
   el.appendChild(lbl);
   const setLbl = (name,val)=>{ lbl.innerHTML =
-    `<div style="font-size:10.5px;font-weight:800">${esc(name)}</div>`
-    +`<div style="font-size:15px">${wan(val)}</div>`
-    +`<div style="font-size:10.5px;font-weight:800">${(val/total*100).toFixed(1)}%</div>`; };
+    `<div style="font-size:12px;color:#8a8172">${esc(name)}</div>`
+    +`<div style="font-size:17px;font-weight:600">${wan(val)}</div>`
+    +`<div style="font-size:12px;color:#8a8172">${(val/total*100).toFixed(1)}%</div>`; };
   let curRoot = {name:rootName(),val:total};
   let curArr = rootArr();
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
-  // 尺寸统一:中心孔 24%(≈原来点击权益那层的大小),所有层级一致,不随下钻变化
+  // 尺寸统一:中心孔 24%,所有层级一致。样式借经典配色(白细边+圆角+IBM Plex Sans+600字重),配色(CCOL)不动
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
     series:[{type:'sunburst',data:rootArr(),radius:['24%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
-      itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
+      itemStyle:{borderColor:'#fff',borderWidth:2,borderRadius:3},
       levels:[
         {},
-        {r0:'24%',r:'48%',label:{rotate:'tangential',color:'#fff',fontSize:12,fontWeight:900,
-          formatter:p=>p.name,minAngle:8},itemStyle:{borderWidth:2.5}},
-        {r0:'48%',r:'72%',label:{rotate:'tangential',color:'#111',fontSize:10,fontWeight:700,
-          formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8},itemStyle:{borderWidth:2}},
-        {r0:'72%',r:'98%',label:{rotate:'radial',color:'#111',fontSize:9.5,fontWeight:700,
-          formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1.5}}
+        {r0:'24%',r:'48%',label:{rotate:'tangential',color:'#ffffff',fontSize:12,fontWeight:'600',
+          fontFamily:'IBM Plex Sans',formatter:p=>p.name,minAngle:8},itemStyle:{borderWidth:2}},
+        {r0:'48%',r:'72%',label:{rotate:'tangential',color:'#33332d',fontSize:10,
+          fontFamily:'IBM Plex Sans',formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8},itemStyle:{borderWidth:1.5}},
+        {r0:'72%',r:'98%',label:{rotate:'radial',color:'#4a4a44',fontSize:9.5,
+          fontFamily:'IBM Plex Sans',formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1}}
       ]}]
   });
   const renderAt = arr => chart.setOption({series:[{data:arr}]});
