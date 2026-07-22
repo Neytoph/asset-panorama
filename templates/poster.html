@@ -15,7 +15,13 @@
     --paper: #f4f1ea; --ink: #111111;
     --c-prop: #4a3aa7; --c-eq: #2a78d6; --c-bond: #1baf7a; --c-cash: #008300; --c-gold: #eda100;
     --red: #e34948; --shadow: 6px 6px 0 var(--ink);
+    /* 文字走 Sans,所有数字走等宽 Mono(方案 C) */
+    --mono: "IBM Plex Mono", "PingFang SC", ui-monospace, monospace;
   }
+  /* 数字展示元素统一 Mono:金额/占比/KPI/净值/浮盈… */
+  .hero-blk .v, .date-stamp .big, .cell .pc, .rank .v, .rank .pl,
+  .kpi .v, .kv .v, .road .step .v, .fi3 .c .v {
+    font-family: var(--mono); font-variant-numeric: tabular-nums; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: var(--paper); color: var(--ink); padding: 36px 40px 48px;
     font: 15px/1.5 "IBM Plex Sans", "PingFang SC", system-ui, sans-serif;
@@ -524,7 +530,7 @@ const T = {
   ink:'#111111', paper:'#f4f1ea', red:'#e34948', gold:'#eda100',
   eq:'#2a78d6', bond:'#1baf7a',
   palette:['#4a3aa7','#2a78d6','#1baf7a','#008300','#eda100','#8a5aa7','#5b7d8c'],
-  sans:'IBM Plex Sans'
+  sans:'IBM Plex Sans', mono:'IBM Plex Mono'
 };
 const CCOL = {'房产':'#4a3aa7','权益':'#2a78d6','债券类固收':'#1baf7a','现金':'#008300','黄金':'#eda100'};
 const wan = v => window._privacy ? '¥***' : '¥' + (v/1e4).toFixed(1) + '万';   // 演示脱敏时所有动态金额走这里被遮蔽
@@ -661,7 +667,7 @@ safe('增长归因', function(){
         fill="${c}"${m.draft?' fill-opacity=".45"':''} stroke="#111" stroke-width="1.5"><title>${m.month} ${name} ${w(v)}</title></rect>`;
       if (v >= 0) up -= h; else dn += h;
     });
-    g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#111">${m.month.slice(2).replace('-','/')}</text>`;
+    g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9.5" font-weight="800" font-family="IBM Plex Mono, monospace" fill="#111">${m.month.slice(2).replace('-','/')}</text>`;
   });
   html += `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;margin-top:10px" role="img" aria-label="逐月净资产增长归因堆叠柱">${g}</svg>`;
   html += `<div class="att-leg">${COMP.map(([k,name,c])=>`<span><i style="background:${c}"></i>${name}</span>`).join('')}
@@ -1082,12 +1088,12 @@ safe('净值走势', function(){
   for(let k=0;k<=STEPS;k++){
     const v=lo+(hi-lo)*k/STEPS, yy=y(v);
     g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#ddd7c6" stroke-width="1"/>`;
-    g+=`<text x="${P.l-4}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="#8a8172">${v.toFixed(0)}</text>`;
+    g+=`<text x="${P.l-4}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace" fill="#8a8172">${v.toFixed(0)}</text>`;
   }
   const xn=Math.min(n-1,4);
   for(let k=0;k<=xn;k++){
     const i=Math.round((n-1)*k/Math.max(1,xn));
-    g+=`<text x="${x(i).toFixed(1)}" y="${HT-6}" text-anchor="${k===0?'start':k===xn?'end':'middle'}" font-size="9" font-weight="700" fill="#8a8172">${fmtDate(DATE[i])}</text>`;
+    g+=`<text x="${x(i).toFixed(1)}" y="${HT-6}" text-anchor="${k===0?'start':k===xn?'end':'middle'}" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace" fill="#8a8172">${fmtDate(DATE[i])}</text>`;
   }
   const pts=H.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
   g+=`<polyline points="${pts}" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
@@ -1717,35 +1723,35 @@ safe('旭日图', ()=>{
   const chart = echarts.init(el);
   const lbl = document.createElement('div');
   lbl.title = '点击返回上一级';
+  // 柔和中心标签:无黑边/投影;名称走 Sans,数字(金额/占比)走 Mono(方案 C)
   lbl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
-    +'width:118px;height:118px;border-radius:50%;display:flex;flex-direction:column;'
+    +'width:126px;height:126px;border-radius:50%;display:flex;flex-direction:column;'
     +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
-    +'z-index:5;line-height:1.4;background:#f4f1ea;color:#111;font-weight:900;'
-    +'border:3px solid #111;box-shadow:3px 3px 0 #111';
+    +'z-index:5;line-height:1.4;background:#f4f1ea;color:#111';
   el.appendChild(lbl);
   const setLbl = (name,val)=>{ lbl.innerHTML =
-    `<div style="font-size:10.5px;font-weight:800">${esc(name)}</div>`
-    +`<div style="font-size:15px">${wan(val)}</div>`
-    +`<div style="font-size:10.5px;font-weight:800">${(val/total*100).toFixed(1)}%</div>`; };
+    `<div style="font-size:12px;color:#8a8172;font-family:${T.sans}">${esc(name)}</div>`
+    +`<div style="font-size:17px;font-weight:600;font-family:${T.mono}">${wan(val)}</div>`
+    +`<div style="font-size:12px;color:#8a8172;font-family:${T.mono}">${(val/total*100).toFixed(1)}%</div>`; };
   let curRoot = {name:rootName(),val:total};
   let curArr = rootArr();
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
   const resetLbl = ()=>setLbl(curRoot.name,curRoot.val);
   resetLbl();
-  // 尺寸统一:中心孔 24%,所有层级一致(poster 原粗野风样式;字体走全局 T.sans)
+  // 柔和样式(白细边+圆角)+ 分层字重(大类700→子类500→持仓400,均 Sans);尺寸统一中心孔24%
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
     series:[{type:'sunburst',data:rootArr(),radius:['24%','98%'],center:['50%','50%'],
       sort:null,nodeClick:false,emphasis:{focus:'relative'},
-      itemStyle:{borderColor:'#111',borderWidth:2,borderRadius:0},
+      itemStyle:{borderColor:'#fff',borderWidth:2,borderRadius:3},
       levels:[
         {},
-        {r0:'24%',r:'48%',label:{rotate:'tangential',color:'#fff',fontSize:12,fontWeight:900,
-          fontFamily:T.sans,formatter:p=>p.name,minAngle:8},itemStyle:{borderWidth:2.5}},
-        {r0:'48%',r:'72%',label:{rotate:'tangential',color:'#111',fontSize:10,fontWeight:700,
-          fontFamily:T.sans,formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8},itemStyle:{borderWidth:2}},
-        {r0:'72%',r:'98%',label:{rotate:'radial',color:'#111',fontSize:9.5,fontWeight:700,
-          fontFamily:T.sans,formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1.5}}
+        {r0:'24%',r:'48%',label:{rotate:'tangential',color:'#ffffff',fontSize:13,fontWeight:700,
+          fontFamily:T.sans,formatter:p=>p.name,minAngle:8},itemStyle:{borderWidth:2}},
+        {r0:'48%',r:'72%',label:{rotate:'tangential',color:'#33332d',fontSize:10.5,fontWeight:500,
+          fontFamily:T.sans,formatter:p=>p.value/total>=0.03?p.name:'',minAngle:8},itemStyle:{borderWidth:1.5}},
+        {r0:'72%',r:'98%',label:{rotate:'radial',color:'#4a4a44',fontSize:9,fontWeight:400,
+          fontFamily:T.sans,formatter:p=>p.value/total>=0.025?p.name:'',minAngle:6},itemStyle:{borderWidth:1}}
       ]}]
   });
   const renderAt = arr => chart.setOption({series:[{data:arr}]});
@@ -1836,7 +1842,7 @@ safe('现金流月度走势', ()=>{
     grid:{left:52,right:44,top:30,bottom:22},
     xAxis:{type:'category',data:h.map(r=>r.月份),
       axisLine:{lineStyle:{color:'#111',width:2}},
-      axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans}},
+      axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.mono}},
     yAxis:[
       {type:'value',splitLine:{lineStyle:{color:'#e4e0d4'}},
         axisLabel:{color:'#111',fontSize:9,fontWeight:700,formatter:v=>(v/1e4).toFixed(1)+'万'}},
@@ -1866,7 +1872,7 @@ safe('选中资产走势', ()=>{
   const CSYM = {USD:'$', HKD:'HK$', CNY:'¥'};
   const fmtPx = v => v>=100 ? v.toFixed(0) : v>=10 ? v.toFixed(2) : v.toFixed(3);
   const AXIS = s => ({type:'category',data:s.map(p=>p[0]),boundaryGap:false,
-    axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.sans,
+    axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.mono,
       formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
     axisLine:{lineStyle:{color:'#111',width:2}}});
   const marksOf = (s, yOf) => {
