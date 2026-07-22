@@ -67,3 +67,4 @@ demo/quotes_cache.json
 demo/klines_cache.json
 demo/*.bak.*
 font-preview.html
+theme-preview.html
