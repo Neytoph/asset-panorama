@@ -952,21 +952,6 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     axisLabel:{color:T.faint,fontSize:10,fontFamily:T.mono,
       formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
     axisLine:{lineStyle:{color:T.grid}}});
-  const marksOf = (s, yOf) => {
-    const di = {}; s.forEach((p,i)=>{ di[p[0]] = i; });
-    const mpts = [];
-    (curName ? ((D.tradeMarks||{})[curName]||[]) : []).forEach(m=>{
-      const i = di[m[0]];
-      if (i == null) return;
-      const buy = m[1] === '买入';
-      mpts.push({coord:[i, yOf(i, m)], name:m[1],
-        symbol:'triangle', symbolRotate: buy?0:180, symbolSize:11,
-        itemStyle:{color: buy?'#e5484d':'#30a46c', borderColor:'#0b0d10', borderWidth:1},
-        info:`${m[0]} ${m[1]} ${m[2]}@${m[3]||'?'}${m[4]!=null?' · '+wan(m[4]):''}`});
-    });
-    return {data:mpts, label:{show:false},
-      tooltip:{trigger:'item', formatter:p=>(p.data&&p.data.info)||''}};
-  };
   function draw(){
     let s = curData ? (curMode==='mv' ? curData.mv : curMode==='px' ? curData.px : curData.val) : null;
     if (!s || !s.length){
@@ -984,26 +969,30 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
       const bandBase = s.map(p=>Math.min(p[1],p[2]));
       const bandUp = s.map(p=>Math.max(p[1]-p[2],0));
       const bandDn = s.map(p=>Math.max(p[2]-p[1],0));
+      // stack 色带会把 Y 轴撑到 0,市值线看起来像从 0 跳起;显式贴合数据范围
+      const yLo = Math.min(...mv, ...cost), yHi = Math.max(...mv, ...cost);
+      const yPad = (yHi - yLo) * 0.1 || Math.abs(yHi) * 0.05 || 1;
       const mute = {symbol:'none', lineStyle:{opacity:0}, silent:true, emphasis:{disabled:true}, tooltip:{show:false}, stack:'pnl'};
       tc.setOption({
+        animationDurationUpdate:450,
+        animationEasingUpdate:'cubicOut',
         tooltip:{trigger:'axis',...TIP,
           formatter: ps=>{ const i=ps[0].dataIndex, m0=s[i][1], c0=s[i][2], d0=m0-c0;
             return `${s[i][0]}<br>MV ${wan(m0)} · COST ${wan(c0)}<br>P/L ${d0>=0?'+':'−'}${wan(Math.abs(d0))}（${c0?(d0/c0*100).toFixed(1):'0.0'}%）`; }},
         grid:{left:52,right:12,top:12,bottom:24},
         xAxis:AXIS(s),
-        yAxis:{type:'value',scale:true,splitLine:{lineStyle:{color:'#1b2029'}},
+        yAxis:{type:'value',min:yLo-yPad,max:yHi+yPad,scale:true,splitLine:{lineStyle:{color:'#1b2029'}},
           axisLabel:{color:T.faint,fontSize:10,fontFamily:T.mono,formatter:v=>(v/1e4).toFixed(0)+'万'}},
         series:[
-          Object.assign({type:'line',data:bandBase,areaStyle:{opacity:0}}, mute),
-          Object.assign({type:'line',data:bandUp,areaStyle:{color:'rgba(229,72,77,.15)'}}, mute),
-          Object.assign({type:'line',data:bandDn,areaStyle:{color:'rgba(48,164,108,.15)'}}, mute),
-          {type:'line',data:cost,symbol:'none',z:3,
+          Object.assign({id:'trend-band-base',type:'line',data:bandBase,areaStyle:{opacity:0}}, mute),
+          Object.assign({id:'trend-band-up',type:'line',data:bandUp,areaStyle:{color:'rgba(229,72,77,.15)'}}, mute),
+          Object.assign({id:'trend-band-down',type:'line',data:bandDn,areaStyle:{color:'rgba(48,164,108,.15)'}}, mute),
+          {id:'trend-cost',type:'line',data:cost,symbol:'none',z:3,
             lineStyle:{color:'#8b93a7',width:1.6,type:'dashed'}},
-          {type:'line',data:mv,symbol:'none',z:4,
-            lineStyle:{color:'#3987e5',width:1.8},
-            markPoint:marksOf(s, i=>s[i][1])}
+          {id:'trend-market',type:'line',data:mv,symbol:'none',z:4,
+            lineStyle:{color:'#3987e5',width:1.8}}
         ]
-      }, true);
+      }, {notMerge:false,replaceMerge:['series']});
       return;
     }
     const isPx = curMode==='px';
@@ -1025,6 +1014,8 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
     hint.textContent = `${curTitle} · ${s.length}PTS · ${isPx?'PX '+csym+fmtPx(l)+' · ':''}${chg>=0?'+':''}${(chg*100).toFixed(1)}%`
       + (nbSum ? ` · EX-FLOW ${wan(nbSum)}` : '');
     tc.setOption({
+      animationDurationUpdate:450,
+      animationEasingUpdate:'cubicOut',
       tooltip:{trigger:'axis',...TIP,
         formatter: isPx ? (ps=>{ const p=ps[0]; const d=s[p.dataIndex][0], q=qat(d);
             return `${d} · ${csym}${fmtPx(p.value)}`
@@ -1032,14 +1023,14 @@ const TIP = {backgroundColor:'#05060a',borderColor:'#2d3344',borderWidth:1,
           : (ps=>{ const p=ps[0]; return `${s[p.dataIndex][0]} · ${wan(p.value)}`; })},
       grid:{left:52,right:12,top:12,bottom:24},
       xAxis:AXIS(s),
-      yAxis:{type:'value',scale:true,splitLine:{lineStyle:{color:'#1b2029'}},
+      // min/max:null 清掉双线视图残留的显式量程(否则总净资产会被锁在权益轴上)
+      yAxis:{type:'value',min:null,max:null,scale:true,splitLine:{lineStyle:{color:'#1b2029'}},
         axisLabel:{color:T.faint,fontSize:10,fontFamily:T.mono,
           formatter: isPx ? (v=>fmtPx(v)) : (v=>(v/1e4).toFixed(0)+'万')}},
-      series:[{type:'line',smooth:false,symbol:'none',data:s.map(p=>p[1]),
+      series:[{id:'trend-value',type:'line',smooth:false,symbol:'none',data:s.map(p=>p[1]),
         lineStyle:{color:'#3987e5',width:1.8},
-        areaStyle:{color:'rgba(57,135,229,.12)'},
-        markPoint:marksOf(s, (i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}]
-    }, true);
+        areaStyle:{color:'rgba(57,135,229,.12)'}}]
+    }, {notMerge:false,replaceMerge:['series']});
   }
   window._renderTrend = (series,title,name,aggNames)=>{
     const isMvc = !!(series && series.length && series[0].length > 2);

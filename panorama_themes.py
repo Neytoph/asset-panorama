@@ -722,18 +722,6 @@ mkBar('c_liq',D.liq);
   const AXIS=s=>({{type:'category',data:s.map(p=>p[0]),boundaryGap:false,
     axisLabel:{{color:T.dim,fontSize:10,formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''}},
     axisLine:{{lineStyle:{{color:T.grid}}}}}});
-  const marksOf=(s,yOf)=>{{
-    const di={{}};s.forEach((p,i)=>{{di[p[0]]=i;}});
-    const mpts=[];
-    (curName?((D.tradeMarks||{{}})[curName]||[]):[]).forEach(m=>{{
-      const i=di[m[0]];if(i==null)return;
-      const buy=m[1]==='买入';
-      mpts.push({{coord:[i,yOf(i,m)],name:m[1],symbol:'triangle',symbolRotate:buy?0:180,
-        symbolSize:12,itemStyle:{{color:buy?T.bad:T.good,borderColor:T.dim,borderWidth:1}},
-        info:m[0]+' '+m[1]+' '+m[2]+'@'+(m[3]||'?')+(m[4]!=null?' · '+fmtWan(m[4]):'')}});
-    }});
-    return {{data:mpts,label:{{show:false}},tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}};
-  }};
   function draw(){{
     let s=curData?(curMode==='mv'?curData.mv:curMode==='px'?curData.px:curData.val):null;
     if(!s||!s.length){{hint.textContent=curTitle?(curTitle+'：暂无走势数据（无行情或未记录）'):'点击上方图表的大类/子类/持仓，查看其走势';tc.clear();return;}}
@@ -750,24 +738,28 @@ mkBar('c_liq',D.liq);
       const bandBase=s.map(p=>Math.min(p[1],p[2]));
       const bandUp=s.map(p=>Math.max(p[1]-p[2],0));
       const bandDn=s.map(p=>Math.max(p[2]-p[1],0));
+      // stack 色带会把 Y 轴撑到 0,市值线看起来像从 0 跳起;显式贴合数据范围
+      const yLo=Math.min(...mv,...cost),yHi=Math.max(...mv,...cost);
+      const yPad=(yHi-yLo)*0.1||Math.abs(yHi)*0.05||1;
       const mute={{symbol:'none',lineStyle:{{opacity:0}},silent:true,emphasis:{{disabled:true}},tooltip:{{show:false}},stack:'pnl'}};
       tc.setOption({{
+        animationDurationUpdate:450,
+        animationEasingUpdate:'cubicOut',
         tooltip:{{trigger:'axis',formatter:ps=>{{const i=ps[0].dataIndex,m0=s[i][1],c0=s[i][2],d0=m0-c0;
           return s[i][0]+'<br>市值 '+fmtWan(m0)+' · 净投入 '+fmtWan(c0)
             +'<br>浮盈 '+(d0>=0?'+':'−')+fmtWan(Math.abs(d0))+'('+(c0?(d0/c0*100).toFixed(1):'0.0')+'%)';}}}},
         grid:{{left:58,right:18,top:16,bottom:26}},
         xAxis:AXIS(s),
-        yAxis:{{type:'value',scale:true,axisLabel:{{color:T.dim,fontSize:10,formatter:v=>(v/1e4).toFixed(0)+'万'}},
+        yAxis:{{type:'value',min:yLo-yPad,max:yHi+yPad,scale:true,axisLabel:{{color:T.dim,fontSize:10,formatter:v=>(v/1e4).toFixed(0)+'万'}},
           splitLine:{{lineStyle:{{color:T.grid}}}}}},
         series:[
-          Object.assign({{type:'line',data:bandBase,areaStyle:{{opacity:0}}}},mute),
-          Object.assign({{type:'line',data:bandUp,areaStyle:{{color:'rgba(220,38,38,.14)'}}}},mute),
-          Object.assign({{type:'line',data:bandDn,areaStyle:{{color:'rgba(22,163,74,.14)'}}}},mute),
-          {{type:'line',data:cost,symbol:'none',z:3,lineStyle:{{color:T.dim,width:2,type:'dashed'}}}},
-          {{type:'line',data:mv,symbol:'none',z:4,lineStyle:{{color:T.line1,width:2.5}},
-            markPoint:marksOf(s,i=>s[i][1])}}
+          Object.assign({{id:'trend-band-base',type:'line',data:bandBase,areaStyle:{{opacity:0}}}},mute),
+          Object.assign({{id:'trend-band-up',type:'line',data:bandUp,areaStyle:{{color:'rgba(220,38,38,.14)'}}}},mute),
+          Object.assign({{id:'trend-band-down',type:'line',data:bandDn,areaStyle:{{color:'rgba(22,163,74,.14)'}}}},mute),
+          {{id:'trend-cost',type:'line',data:cost,symbol:'none',z:3,lineStyle:{{color:T.dim,width:2,type:'dashed'}}}},
+          {{id:'trend-market',type:'line',data:mv,symbol:'none',z:4,lineStyle:{{color:T.line1,width:2.5}}}}
         ]
-      }},true);
+      }},{{notMerge:false,replaceMerge:['series']}});
       return;
     }}
     const isPx=curMode==='px';
@@ -785,20 +777,22 @@ mkBar('c_liq',D.liq);
       +'区间'+(chg>=0?'+':'')+(chg*100).toFixed(1)+'%'
       +(nbSum?' · 已剔除净投入'+fmtWan(nbSum):'');
     tc.setOption({{
+      animationDurationUpdate:450,
+      animationEasingUpdate:'cubicOut',
       tooltip:{{trigger:'axis',
         formatter:isPx?(ps=>{{const p=ps[0];const d=s[p.dataIndex][0],q=qat(d);
             return d+' · '+csym+fmtPx(p.value)+(q>0?'<br>市值 '+fmtWan(p.value*q*FXR)+'（'+(q%1?q.toFixed(2):q)+'份）':'');}})
           :(ps=>{{const p=ps[0];return s[p.dataIndex][0]+' · '+fmtWan(p.value);}})}},
       grid:{{left:58,right:18,top:16,bottom:26}},
       xAxis:AXIS(s),
-      yAxis:{{type:'value',scale:true,axisLabel:{{color:T.dim,fontSize:10,
+      // min/max:null 清掉双线视图残留的显式量程(否则总净资产会被锁在权益轴上)
+      yAxis:{{type:'value',min:null,max:null,scale:true,axisLabel:{{color:T.dim,fontSize:10,
         formatter:isPx?(v=>fmtPx(v)):(v=>(v/1e4).toFixed(0)+'万')}},
         splitLine:{{lineStyle:{{color:T.grid}}}}}},
-      series:[{{type:'line',smooth:true,symbol:'none',data:s.map(p=>p[1]),
+      series:[{{id:'trend-value',type:'line',smooth:true,symbol:'none',data:s.map(p=>p[1]),
         lineStyle:{{color:T.line1,width:2.5}},
-        areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'33'}},{{offset:1,color:T.line1+'05'}}])}},
-        markPoint:marksOf(s,(i,m)=>isPx?(parseFloat(m[3])||s[i][1]):s[i][1])}}]
-    }},true);
+        areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'33'}},{{offset:1,color:T.line1+'05'}}])}}}}]
+    }},{{notMerge:false,replaceMerge:['series']}});
   }}
   window._renderTrend=(series,title,name,aggNames)=>{{
     const isMvc=!!(series&&series.length&&series[0].length>2);

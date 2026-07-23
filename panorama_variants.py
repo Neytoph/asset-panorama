@@ -22,6 +22,7 @@ ECHARTS_VENDOR = BASE / "vendor" / "echarts.min.js"
 VARIANTS = [
     ("terminal.html", "panorama_terminal.html", "交易终端"),
     ("poster.html", "panorama_poster.html", "色块海报"),
+    ("blueprint.html", "panorama_blueprint.html", "蓝图制图"),
 ]
 
 

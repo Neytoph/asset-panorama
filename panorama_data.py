@@ -434,9 +434,11 @@ def collect(persist_history=True, fetch_klines=True):
             trends["mvc:" + name] = mvc
 
     # ── 大类/子类 市值+成本双线(2026-07-21) ────────────────────────────
-    # 恒等式:成本 = 市值 − Σ可定价持仓浮盈。等价于「台账成本 + 无成本成员按账面」,
-    # 保证市值线永远等于 treemap 总额;无成本成员(投顾/理财/保险/现金/房产)按账面计入
-    # 两条线,间距只反映可定价持仓的真实浮盈。全无成本的大类成本≡市值(0.0%,占位)。
+    # 市值来自 history 快照/成员行情；成本只来自 holdings_history 交易台账。
+    # 两种来源不能用「市值−浮盈」互相反推，否则估值时点、汇率和无行情资产的差异
+    # 会被误认为投入变化。无台账成员(投顾等)按当前账面作恒定加项；整个节点都无
+    # 台账时仍令成本≡市值，保留原来的 0% 占位展示。
+    # 大类缺日用 _fill_cat_dates 补齐,子类对齐到同一日期轴,避免父→子切换时新点从 0 入场。
     def _cf_lookup(series):
         """[[date,val],...](升序)→ (query_date)->截至该日最后值(carry-forward,之前为0)。"""
         def at(d):
@@ -449,11 +451,17 @@ def collect(persist_history=True, fetch_klines=True):
             return v
         return at
 
-    def _ledger_pnl_lookup(member_names):
-        """成员里可定价者(有 mvc)的浮盈(市值−成本)按日 carry-forward 求和。"""
-        lut = [_cf_lookup([[d, mv - c] for d, mv, c in trends["mvc:" + n]])
-               for n in member_names if ("mvc:" + n) in trends]
-        return lambda d: sum(f(d) for f in lut)
+    def _ledger_cost_lookup(member_names):
+        """成员台账净投入按日求和；只可能在期初/买入/卖出日变化。"""
+        names = [n for n in member_names if cost_tl.get(n)]
+        return lambda d: sum(cost_at(n, d) for n in names)
+
+    holding_value = {h["name"]: h["value"] for h in holdings}
+
+    def _unledgered_book(member_names):
+        """无交易台账成员按当前账面作历史恒定加项，避免估值变化污染投入线。"""
+        return sum(holding_value.get(n, 0.0) for n in member_names
+                   if not cost_tl.get(n))
 
     def _member_mv(n):
         """成员的干净市值日序列:优先 mvc(历史份数×K线价,口径一致),
@@ -482,6 +490,40 @@ def collect(persist_history=True, fetch_klines=True):
             out.append([d, tot])
         return out
 
+    def _fill_cat_dates(cat_series, member_series):
+        """补齐大类快照缺失的交易日，避免父→子图表切换时新日期点从 0 入场。
+
+        大类 CSV 只在本地估值日有快照；子类 K 线在其他交易日也有点。缺失日按
+        「上一个大类快照中的非行情资产余额 + 当日可定价成员市值」估算；遇到下一个
+        真实快照即重新校准，因此不会积累漂移。
+        """
+        if not cat_series or not member_series:
+            return cat_series
+        cat_map = dict(cat_series)
+        member_at = _cf_lookup(member_series)
+        first, last = cat_series[0][0], cat_series[-1][0]
+        dates = sorted(set(cat_map) | {d for d, _ in member_series if first <= d <= last})
+        residual = None
+        out = []
+        for d in dates:
+            if d in cat_map:
+                mv = cat_map[d]
+                residual = mv - member_at(d)
+            elif residual is not None:
+                mv = member_at(d) + residual
+            else:
+                continue
+            out.append([d, mv])
+        return out
+
+    def _carry_to_dates(series, dates, clip_start=None):
+        """把子类序列按 carry-forward 对齐到所属大类日期轴。"""
+        if not series:
+            return []
+        start = max(series[0][0], clip_start or series[0][0])
+        at = _cf_lookup(series)
+        return [[d, at(d)] for d in dates if d >= start]
+
     agg_book = {}   # {节点名: 无成本(按账面)金额@末日} 供 hint 注明
 
     def _emit_mvc(key_prefix, node_name, mv_series, member_names, clip_start=None):
@@ -491,8 +533,14 @@ def collect(persist_history=True, fetch_klines=True):
             mv_series = [p for p in mv_series if p[0] >= clip_start]
         if len(mv_series) < 2:
             return
-        pnl_at = _ledger_pnl_lookup(member_names)
-        mvc = [[d, round(mv), round(mv - pnl_at(d))] for d, mv in mv_series]
+        has_ledger = any(cost_tl.get(n) for n in member_names)
+        if has_ledger:
+            cost_at_date = _ledger_cost_lookup(member_names)
+            book = _unledgered_book(member_names)
+            mvc = [[d, round(mv), round(cost_at_date(d) + book)]
+                   for d, mv in mv_series]
+        else:
+            mvc = [[d, round(mv), round(mv)] for d, mv in mv_series]
         trends[key_prefix + node_name] = mvc
         led_mv_at = _cf_lookup(_agg_mv([n for n in member_names if ("mvc:" + n) in trends]))
         last_d = mv_series[-1][0]
@@ -501,13 +549,20 @@ def collect(persist_history=True, fetch_klines=True):
     for cat, subs_map in tree.items():
         members_cat = [x["name"] for slist in subs_map.values() for x in slist]
         cat_series = trends.get("cat:" + cat)
+        member_cat_series = _agg_mv(members_cat)
+        aligned_cat_series = _fill_cat_dates(cat_series, member_cat_series) if cat_series else []
+        common_dates = [d for d, _ in aligned_cat_series]
         if cat_series:
-            _emit_mvc("catmvc:", cat, cat_series, members_cat)
+            _emit_mvc("catmvc:", cat, aligned_cat_series, members_cat)
         for sub, members in subs_map.items():
             names = [x["name"] for x in members]
             starts = [qty_tl[n][0][0] for n in names if qty_tl.get(n)]
-            _emit_mvc("submvc:", sub, _agg_mv(names), names,
-                      clip_start=min(starts) if starts else None)
+            clip_start = min(starts) if starts else None
+            sub_series = _agg_mv(names)
+            if common_dates:
+                sub_series = _carry_to_dates(sub_series, common_dates, clip_start)
+                clip_start = None
+            _emit_mvc("submvc:", sub, sub_series, names, clip_start=clip_start)
 
     if changed:
         cache["_meta"] = meta

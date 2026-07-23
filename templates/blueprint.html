@@ -12,10 +12,12 @@
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   :root {
-    --paper: #f4f1ea; --ink: #111111;
-    --c-prop: #4a3aa7; --c-eq: #2a78d6; --c-bond: #1baf7a; --c-cash: #008300; --c-gold: #eda100;
-    --red: #e34948; --shadow: 6px 6px 0 var(--ink);
-    /* 文字走 Sans,所有数字走等宽 Mono(方案 C) */
+    /* 蓝图/示波器:深海军底 + 青荧光 + 等宽制图字 */
+    --paper: #0b2033; --ink: #d3e6f2; --panel: #10293b; --grid: #14344a; --line: #1d4359;
+    --cyan: #45cfe6; --dim: #7096ad;
+    --c-prop: #8a7bff; --c-eq: #4aa8ff; --c-bond: #35d19b; --c-cash: #3fb56a; --c-gold: #ffce4d;
+    --red: #ff6f61; --up: #48d19a; --dn: #ff6f61;
+    --shadow: 0 0 0 1px var(--line);
     --mono: "IBM Plex Mono", "PingFang SC", ui-monospace, monospace;
   }
   /* 数字展示元素统一 Mono:金额/占比/KPI/净值/浮盈… */
@@ -23,10 +25,20 @@
   .kpi .v, .kv .v, .road .step .v, .fi3 .c .v {
     font-family: var(--mono); font-variant-numeric: tabular-nums; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: var(--paper); color: var(--ink); padding: 36px 40px 48px;
-    font: 15px/1.5 "IBM Plex Sans", "PingFang SC", system-ui, sans-serif;
-    font-variant-numeric: tabular-nums; }
-  .blk { background: #fff; border: 3px solid var(--ink); box-shadow: var(--shadow); min-width: 0; }
+  body { background: var(--paper); color: var(--ink); padding: 34px 40px 52px;
+    font: 14px/1.55 var(--mono); font-variant-numeric: tabular-nums;
+    /* 方格纸底纹 */
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 26px 26px; }
+  .blk { background: var(--panel); border: 1px solid var(--line); box-shadow: none;
+    min-width: 0; position: relative; }
+  /* 卡片四角制图刻线 */
+  .blk::before { content:""; position:absolute; left:-1px; top:-1px; width:9px; height:9px;
+    border-left:1.5px solid var(--cyan); border-top:1.5px solid var(--cyan); opacity:.7; }
+  .blk::after { content:""; position:absolute; right:-1px; bottom:-1px; width:9px; height:9px;
+    border-right:1.5px solid var(--cyan); border-bottom:1.5px solid var(--cyan); opacity:.7; }
 
   /* ── 功能分区：分区色只出现在阴影/区头/分隔线，块底保持白色 ── */
   .zone { margin-top: 38px; --z: var(--ink); --zt: #fff; }
@@ -164,7 +176,7 @@
   /* 排行榜 */
   .rank { list-style: none; }
   .rank li { display: flex; align-items: center; gap: 12px; padding: 8px 0;
-    border-bottom: 2px solid #e4e0d4; font-weight: 700; font-size: 14.5px; }
+    border-bottom: 2px solid #1d4359; font-weight: 700; font-size: 14.5px; }
   .rank li:last-child { border-bottom: 0; }
   .rank .no { flex: none; width: 30px; height: 30px; border: 2.5px solid var(--ink);
     display: grid; place-items: center; font-weight: 900; font-size: 13px; background: var(--paper); }
@@ -191,7 +203,7 @@
 
   /* 通用行 */
   .kv { display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    padding: 7px 0; border-bottom: 2px solid #e4e0d4; font-weight: 700; font-size: 13.5px; }
+    padding: 7px 0; border-bottom: 2px solid #1d4359; font-weight: 700; font-size: 13.5px; }
   .kv:last-child { border-bottom: 0; }
   .kv:has(+ .sect), .kv:has(+ .note) { border-bottom: 0; }  /* 虚线分节/虚线框上不再叠行分隔实线 */
   .kv .v { font-weight: 900; white-space: nowrap; }
@@ -369,6 +381,87 @@
     .spark-line { stroke-dashoffset: 0 !important; animation: none !important; }
     .badge:not(.y):not(.o) { animation: none !important; }
   }
+  /* ══════════ 蓝图覆盖层:重定义各组件外观(不改结构/JS) ══════════ */
+  /* 头部:去掉粗野实心块,改制图铭牌 */
+  .masthead { align-items: stretch; }
+  .title-blk { background: transparent; border: 1px solid var(--cyan); color: var(--ink);
+    box-shadow: none; position: relative; }
+  .title-blk::after { content:"SCALE 1:1 · REV.C"; position:absolute; right:12px; bottom:8px;
+    font-size:9px; letter-spacing:.16em; color:var(--dim); }
+  h1 { font-family: var(--mono); font-weight: 600; letter-spacing: .04em; color: var(--cyan);
+    text-shadow: 0 0 14px rgba(69,207,230,.3); }
+  h1 span { -webkit-text-stroke: 1.5px var(--cyan); color: transparent; }
+  .date-stamp { color: var(--dim); font-weight: 500; }
+  .date-stamp .big { color: var(--ink); }
+  .hero-blk { border-color: var(--line); }
+  .hero-blk .lab { color: var(--dim); font-weight: 500; }
+  .hero-blk .v { color: var(--cyan); font-weight: 600; text-shadow: 0 0 18px rgba(69,207,230,.35); }
+  .hero-blk .d { color: var(--up); font-weight: 500; }
+
+  /* 栏目标题:方括号 + 青色,去粗边 */
+  .sec-h { border-bottom: 1px solid var(--line); color: var(--ink); font-weight: 600;
+    letter-spacing: .06em; }
+  .sec-h::before { content:"["; color: var(--cyan); margin-right: 6px; }
+  .sec-h::after { content:"]"; color: var(--cyan); }
+  .sec-h small { color: var(--dim); font-weight: 500; }
+  .blk.lead .sec-h { background: rgba(69,207,230,.08); color: var(--ink); border-bottom-color: var(--cyan); }
+  .blk.lead .sec-h::before, .blk.lead .sec-h::after { content:""; margin:0; }
+
+  /* 分区头:铭牌样式 */
+  .zone-kick { background: transparent; color: var(--cyan); border: 1px solid var(--cyan);
+    box-shadow: none; transform: none; font-weight: 600; }
+  .zone-kick .no { color: var(--dim); }
+  .zone-stat { background: var(--panel); border: 1px solid var(--line); color: var(--ink);
+    box-shadow: none; font-weight: 600; }
+  .zone .blk, .zone .mosaic { box-shadow: none; }
+
+  /* 色块图:深底 + 细缝,数字青色 */
+  .mosaic-title { background: transparent; color: var(--cyan); border: 1px solid var(--cyan);
+    transform: none; font-weight: 600; }
+  .mosaic-cap { color: var(--dim); font-weight: 500; }
+  .mosaic { background: var(--paper); border: 1px solid var(--line); box-shadow: none; gap: 1px; }
+  .cell { border: 0; }
+  .cell .nm { font-weight: 600; }
+  .cell .pc { font-weight: 600; }
+  .sticker { background: var(--paper); color: var(--cyan); border: 1px solid var(--cyan);
+    box-shadow: 0 0 10px rgba(69,207,230,.3); transform: none; }
+  .hm-float { background: var(--panel); border: 1px solid var(--cyan); box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  .hm-tile { border: 1px solid var(--line); }
+
+  /* KPI:描边 + 青色数值 */
+  .kpi { border: 1px solid var(--line); background: rgba(69,207,230,.04); }
+  .kpi .l { color: var(--dim); font-weight: 500; }
+  .kpi .v { color: var(--ink); font-weight: 600; }
+  .kpi:hover { background: rgba(69,207,230,.09); }
+
+  /* 徽标/开关/按钮 */
+  .assetseg { border: 1px solid var(--line); box-shadow: none; }
+  .assetseg button { background: var(--panel); color: var(--dim); font-weight: 500; }
+  .assetseg button + button { border-left: 1px solid var(--line); }
+  .assetseg button.on { background: var(--cyan); color: var(--paper); }
+  #prop-strip { color: var(--dim); font-weight: 500; }
+  #prop-strip b { color: var(--ink); }
+  .mosaic-back, .print-btn { background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    box-shadow: none; font-weight: 500; }
+  .mosaic-back:hover, .print-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .print-btn.on { background: var(--cyan); color: var(--paper); }
+  .mosaic-path { color: var(--dim); }
+
+  /* 净值悬停提示 */
+  .spark-tip { background: var(--panel); color: var(--cyan); border: 1px solid var(--cyan); font-weight: 600; }
+
+  /* 换房横幅 */
+  .reloc-banner { border-color: var(--line); background: rgba(255,111,97,.06); }
+
+  /* 悬停抬起:硬投影改青色辉光 */
+  .blk:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--cyan), 0 6px 26px rgba(69,207,230,.14); }
+  .zone .blk:hover, .zone .mosaic:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--cyan), 0 6px 26px rgba(69,207,230,.14); }
+  .rank li:hover, .kv:hover { background: rgba(69,207,230,.06); }
+
+  /* 净值粗线:青荧光(JS stroke 也已改 cyan) */
+  .spark-line { filter: drop-shadow(0 0 4px rgba(69,207,230,.4)); }
+
+  footer { color: var(--dim); }
 </style>
 </head>
 <body>
@@ -582,18 +675,18 @@ const HAS_EC = typeof echarts !== 'undefined';
 const ecFallback = id => { const el = document.getElementById(id);
   if (el) el.innerHTML = '<div class="note">图表库未加载(离线且未内联)· 数据不受影响</div>'; };
 const T = {
-  ink:'#111111', paper:'#f4f1ea', red:'#e34948', gold:'#eda100',
-  eq:'#2a78d6', bond:'#1baf7a',
-  palette:['#4a3aa7','#2a78d6','#1baf7a','#008300','#eda100','#8a5aa7','#5b7d8c'],
-  sans:'IBM Plex Sans', mono:'IBM Plex Mono'
+  ink:'#d3e6f2', paper:'#0b2033', red:'#ff6f61', gold:'#ffce4d',
+  eq:'#4aa8ff', bond:'#35d19b', cyan:'#45cfe6', dim:'#7096ad', line:'#1d4359', panel:'#10293b',
+  palette:['#8a7bff','#4aa8ff','#35d19b','#3fb56a','#ffce4d','#c08bff','#5bc8e0'],
+  sans:'IBM Plex Mono', mono:'IBM Plex Mono'   // 蓝图全等宽
 };
-const CCOL = {'房产':'#4a3aa7','权益':'#2a78d6','债券类固收':'#1baf7a','现金':'#008300','黄金':'#eda100'};
+const CCOL = {'房产':'#8a7bff','权益':'#4aa8ff','债券类固收':'#35d19b','现金':'#3fb56a','黄金':'#ffce4d'};
 const wan = v => window._privacy ? '¥***' : '¥' + (v/1e4).toFixed(1) + '万';   // 演示脱敏时所有动态金额走这里被遮蔽
 const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const _hue = s => { let h=0; for(const ch of String(s||'·')) h=(h*31+ch.charCodeAt(0))>>>0; return h%360; };
 const chip = (it, small) => it && it.iconPath
   ? `<span class="chip${small?' s':''}"><img src="${esc(it.iconPath)}" alt=""></span>`
-  : `<span class="chip lt${small?' s':''}" style="background:hsl(${_hue(it&&it.名称)} 52% 46%);color:#fff;border-color:#111">${esc(String(it&&it.名称||'·').charAt(0))}</span>`;
+  : `<span class="chip lt${small?' s':''}" style="background:hsl(${_hue(it&&it.名称)} 52% 46%);color:#fff;border-color:#1d4359">${esc(String(it&&it.名称||'·').charAt(0))}</span>`;
 const usNames = new Set();
 (D.tree||[]).forEach(c=>(c.children||[]).forEach(s=>{
   if (s.name==='美股') (s.children||[]).forEach(x=>usNames.add(x.name));
@@ -711,7 +804,7 @@ safe('增长归因', function(){
   const sy = (H - bot - 14) / (mxP + mxN);
   const y0 = 8 + mxP * sy;
   const bw = W / M.length;
-  let g = `<line x1="0" x2="${W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="#111" stroke-width="2"/>`;
+  let g = `<line x1="0" x2="${W}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="#45cfe6" stroke-width="2"/>`;
   M.forEach((m,i)=>{
     let up = y0, dn = y0;
     COMP.forEach(([k,name,c])=>{
@@ -720,10 +813,10 @@ safe('增长归因', function(){
       const h = Math.abs(v) * sy;
       const y = v >= 0 ? up - h : dn;
       g += `<rect x="${(i*bw+5).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw-10).toFixed(1)}" height="${Math.max(h,1).toFixed(1)}"
-        fill="${c}"${m.draft?' fill-opacity=".45"':''} stroke="#111" stroke-width="1.5"><title>${m.month} ${name} ${w(v)}</title></rect>`;
+        fill="${c}"${m.draft?' fill-opacity=".45"':''} stroke="#45cfe6" stroke-width="1.5"><title>${m.month} ${name} ${w(v)}</title></rect>`;
       if (v >= 0) up -= h; else dn += h;
     });
-    g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9.5" font-weight="800" font-family="IBM Plex Mono, monospace" fill="#111">${m.month.slice(2).replace('-','/')}</text>`;
+    g += `<text x="${(i*bw+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9.5" font-weight="800" font-family="IBM Plex Mono, monospace" fill="#7096ad">${m.month.slice(2).replace('-','/')}</text>`;
   });
   html += `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;margin-top:10px" role="img" aria-label="逐月净资产增长归因堆叠柱">${g}</svg>`;
   html += `<div class="att-leg">${COMP.map(([k,name,c])=>`<span><i style="background:${c}"></i>${name}</span>`).join('')}
@@ -907,7 +1000,7 @@ safe('大类配置色块', function(){
   const lerp = (a,b,t)=>Math.round(a+(b-a)*t);
   const heatStyle = (p) => {
     if (p == null || p === 0) {
-      return {bg: '#fff', fg: '#111', light: true};
+      return {bg: '#132b3d', fg: '#8fb2c9', light: false};
     }
     const t = Math.min(Math.abs(p) / HEAT_CAP, 1);
     // 浅底 → 深色：涨 #ffe8e6→#c41e3a；跌 #e6f7ed→#0a7a45
@@ -1152,19 +1245,19 @@ safe('净值走势', function(){
   const STEPS=4;
   for(let k=0;k<=STEPS;k++){
     const v=lo+(hi-lo)*k/STEPS, yy=y(v);
-    g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#ddd7c6" stroke-width="1"/>`;
-    g+=`<text x="${P.l-4}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace" fill="#8a8172">${v.toFixed(0)}</text>`;
+    g+=`<line x1="${P.l}" x2="${W-P.r}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#1d4359" stroke-width="1"/>`;
+    g+=`<text x="${P.l-4}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace" fill="#7096ad">${v.toFixed(0)}</text>`;
   }
   const xn=Math.min(n-1,4);
   for(let k=0;k<=xn;k++){
     const i=Math.round((n-1)*k/Math.max(1,xn));
-    g+=`<text x="${x(i).toFixed(1)}" y="${HT-6}" text-anchor="${k===0?'start':k===xn?'end':'middle'}" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace" fill="#8a8172">${fmtDate(DATE[i])}</text>`;
+    g+=`<text x="${x(i).toFixed(1)}" y="${HT-6}" text-anchor="${k===0?'start':k===xn?'end':'middle'}" font-size="9" font-weight="700" font-family="IBM Plex Mono, monospace" fill="#7096ad">${fmtDate(DATE[i])}</text>`;
   }
   const pts=H.map((v,i)=>`${x(i)},${y(v)}`).join(' ');
-  g+=`<polyline class="spark-line" pathLength="1" points="${pts}" fill="none" stroke="#111" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  g+=`<polyline class="spark-line" pathLength="1" points="${pts}" fill="none" stroke="#45cfe6" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`;
   const pk=H.indexOf(Math.max(...H));
-  g+=`<circle class="spark-peak" cx="${x(pk)}" cy="${y(H[pk])}" r="7" fill="var(--c-gold)" stroke="#111" stroke-width="3"><title>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</title></circle>`;
-  g+=`<circle class="spark-end" cx="${x(n-1)}" cy="${y(H[n-1])}" r="7" fill="var(--red)" stroke="#111" stroke-width="3"><title>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</title></circle>`;
+  g+=`<circle class="spark-peak" cx="${x(pk)}" cy="${y(H[pk])}" r="7" fill="var(--c-gold)" stroke="#45cfe6" stroke-width="3"><title>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</title></circle>`;
+  g+=`<circle class="spark-end" cx="${x(n-1)}" cy="${y(H[n-1])}" r="7" fill="var(--red)" stroke="#45cfe6" stroke-width="3"><title>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</title></circle>`;
   // 大额交易标记(单笔≥金融资产5%):金菱形,悬停出明细——小额定投不标,避免密密麻麻
   const bigByDate = {};
   (PD.bigTrades||[]).forEach(t=>{ (bigByDate[t[0]]=bigByDate[t[0]]||[]).push(t); });
@@ -1172,11 +1265,11 @@ safe('净值走势', function(){
     const i = DATE.indexOf(d);
     if (i < 0) return;
     const txt = bigByDate[d].map(t=>`${fmtDate(t[0])} ${t[2]} ${t[1]} ${(t[3]/1e4).toFixed(1)}万`).join(' · ');
-    g+=`<rect x="${x(i)-6}" y="${y(H[i])-6}" width="12" height="12" transform="rotate(45 ${x(i)} ${y(H[i])})" fill="var(--c-gold)" stroke="#111" stroke-width="2.5"><title>${txt}</title></rect>`;
+    g+=`<rect x="${x(i)-6}" y="${y(H[i])-6}" width="12" height="12" transform="rotate(45 ${x(i)} ${y(H[i])})" fill="var(--c-gold)" stroke="#45cfe6" stroke-width="2.5"><title>${txt}</title></rect>`;
   });
-  g+=`<line id="sp-xh" y1="${P.t}" y2="${HT-P.b}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
-  g+=`<line id="sp-yh" x1="${P.l}" x2="${W-P.r}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
-  g+=`<circle id="sp-hd" r="7" fill="var(--c-bond)" stroke="#111" stroke-width="3" opacity="0" pointer-events="none"/>`;
+  g+=`<line id="sp-xh" y1="${P.t}" y2="${HT-P.b}" stroke="#45cfe6" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
+  g+=`<line id="sp-yh" x1="${P.l}" x2="${W-P.r}" stroke="#45cfe6" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
+  g+=`<circle id="sp-hd" r="7" fill="var(--c-bond)" stroke="#45cfe6" stroke-width="3" opacity="0" pointer-events="none"/>`;
   svg.innerHTML=g;
   const xh=svg.querySelector('#sp-xh'), yh=svg.querySelector('#sp-yh'), hd=svg.querySelector('#sp-hd');
   const tip=document.getElementById('spark-tip');
@@ -1747,14 +1840,14 @@ safe('演示脱敏', function(){
 });
 
 /* ═══ ECharts（粗野海报风）═══ */
-const TIP = {backgroundColor:'#111', borderWidth:0,
-  textStyle:{color:'#f4f1ea',fontSize:12,fontFamily:T.sans,fontWeight:700}};
-// 联动十字线:悬停时纵横虚线 + 轴端标签(黑底纸字),跨轴读数
+const TIP = {backgroundColor:'#0b2033', borderColor:'#45cfe6', borderWidth:1,
+  textStyle:{color:'#d3e6f2',fontSize:12,fontFamily:T.mono,fontWeight:600}};
+// 联动十字线:青色纵横虚线 + 轴端标签(深底青字),跨轴读数
 const XHAIR = {type:'cross',
-  lineStyle:{color:'#111',width:1.2,type:'dashed'},
-  crossStyle:{color:'#111',width:1.2,type:'dashed'},
-  label:{backgroundColor:'#111',color:'#f4f1ea',fontFamily:T.mono,fontSize:10,
-    borderWidth:0,padding:[3,6],shadowBlur:0}};
+  lineStyle:{color:'#45cfe6',width:1,type:'dashed'},
+  crossStyle:{color:'#45cfe6',width:1,type:'dashed'},
+  label:{backgroundColor:'#0b2033',color:'#45cfe6',fontFamily:T.mono,fontSize:10,
+    borderColor:'#45cfe6',borderWidth:1,padding:[3,6],shadowBlur:0}};
 
 /* 旭日图（下钻 + 联动） */
 safe('旭日图', ()=>{
@@ -1812,12 +1905,12 @@ safe('旭日图', ()=>{
   lbl.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);'
     +'width:126px;height:126px;border-radius:50%;display:flex;flex-direction:column;'
     +'align-items:center;justify-content:center;text-align:center;cursor:pointer;'
-    +'z-index:5;line-height:1.4;background:#f4f1ea;color:#111';
+    +'z-index:5;line-height:1.4;background:#10293b;color:#d3e6f2;box-shadow:0 0 0 1px #1d4359';
   el.appendChild(lbl);
   const setLbl = (name,val)=>{ lbl.innerHTML =
-    `<div style="font-size:12px;color:#8a8172;font-family:${T.sans}">${esc(name)}</div>`
+    `<div style="font-size:12px;color:#7096ad;font-family:${T.sans}">${esc(name)}</div>`
     +`<div style="font-size:17px;font-weight:600;font-family:${T.mono}">${wan(val)}</div>`
-    +`<div style="font-size:12px;color:#8a8172;font-family:${T.mono}">${(val/total*100).toFixed(1)}%</div>`; };
+    +`<div style="font-size:12px;color:#7096ad;font-family:${T.mono}">${(val/total*100).toFixed(1)}%</div>`; };
   let curRoot = {name:rootName(),val:total};
   let curArr = rootArr();
   const _stack = [];   // 下钻栈:每帧 {name,val,arr};中心点击弹一层回上级(非直接回顶)
@@ -1827,8 +1920,8 @@ safe('旭日图', ()=>{
   chart.setOption({
     tooltip:{trigger:'item',formatter:p=>`${p.name}<br>${wan(p.value)} · ${(p.value/total*100).toFixed(1)}%`,...TIP},
     series:[{type:'sunburst',data:rootArr(),radius:['24%','98%'],center:['50%','50%'],
-      sort:null,nodeClick:false,emphasis:{focus:'relative',itemStyle:{shadowBlur:14,shadowColor:'rgba(20,18,12,.4)',borderColor:'#fff',borderWidth:2}},
-      itemStyle:{borderColor:'#fff',borderWidth:2,borderRadius:3},
+      sort:null,nodeClick:false,emphasis:{focus:'relative',itemStyle:{shadowBlur:14,shadowColor:'rgba(20,18,12,.4)',borderColor:"#0b2033",borderWidth:2}},
+      itemStyle:{borderColor:"#0b2033",borderWidth:2,borderRadius:3},
       levels:[
         {},
         {r0:'24%',r:'48%',label:{rotate:'tangential',color:'#ffffff',fontSize:13,fontWeight:700,
@@ -1910,12 +2003,12 @@ safe('现金流月度走势', ()=>{
   if (!HAS_EC){ ecFallback('c_cf_trend'); return; }
   const barData = h.map(r=>{
     const ok = r.已对账==='是';
-    return {value:r.净结余,itemStyle:{color:ok?'#2a78d6':'rgba(0,0,0,0)',borderColor:'#111',
+    return {value:r.净结余,itemStyle:{color:ok?'#2a78d6':'rgba(0,0,0,0)',borderColor:"#1d4359",
       borderWidth:2,borderType:ok?'solid':'dashed',borderRadius:0}};
   });
   const lineData = h.map(r=>({value:+(r.储蓄率*100).toFixed(1),
     symbol:r.已对账==='是'?'circle':'emptyCircle',symbolSize:8,
-    itemStyle:{color:'#eda100',borderColor:'#111',borderWidth:2}}));
+    itemStyle:{color:'#eda100',borderColor:"#1d4359",borderWidth:2}}));
   echarts.init(el).setOption({
     tooltip:{trigger:'axis',axisPointer:XHAIR,...TIP,formatter:params=>{
       const r = h[params[0].dataIndex];
@@ -1923,16 +2016,16 @@ safe('现金流月度走势', ()=>{
       return `${r.月份} ${tag}<br>净结余 ¥${r.净结余.toLocaleString()}<br>储蓄率 ${(r.储蓄率*100).toFixed(1)}%`
         + (r.其他实际支出?`<br>其他支出 ¥${r.其他实际支出.toLocaleString()}`:'');
     }},
-    legend:{data:['净结余','储蓄率'],textStyle:{color:'#111',fontSize:11,fontWeight:700},top:0},
+    legend:{data:['净结余','储蓄率'],textStyle:{color:"#8fb2c9",fontSize:11,fontWeight:700},top:0},
     grid:{left:52,right:44,top:30,bottom:22},
     xAxis:{type:'category',data:h.map(r=>r.月份),
-      axisLine:{lineStyle:{color:'#111',width:2}},
-      axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.mono}},
+      axisLine:{lineStyle:{color:"#8fb2c9",width:2}},
+      axisLabel:{color:"#8fb2c9",fontSize:10,fontWeight:700,fontFamily:T.mono}},
     yAxis:[
-      {type:'value',splitLine:{lineStyle:{color:'#e4e0d4'}},
-        axisLabel:{color:'#111',fontSize:9,fontWeight:700,formatter:v=>(v/1e4).toFixed(1)+'万'}},
+      {type:'value',splitLine:{lineStyle:{color:'#1d4359'}},
+        axisLabel:{color:"#8fb2c9",fontSize:9,fontWeight:700,formatter:v=>(v/1e4).toFixed(1)+'万'}},
       {type:'value',min:0,max:60,splitLine:{show:false},
-        axisLabel:{color:'#111',fontSize:9,fontWeight:700,formatter:'{value}%'}}
+        axisLabel:{color:"#8fb2c9",fontSize:9,fontWeight:700,formatter:'{value}%'}}
     ],
     series:[
       {name:'净结余',type:'bar',yAxisIndex:0,barWidth:'46%',data:barData},
@@ -1957,9 +2050,9 @@ safe('选中资产走势', ()=>{
   const CSYM = {USD:'$', HKD:'HK$', CNY:'¥'};
   const fmtPx = v => v>=100 ? v.toFixed(0) : v>=10 ? v.toFixed(2) : v.toFixed(3);
   const AXIS = s => ({type:'category',data:s.map(p=>p[0]),boundaryGap:false,
-    axisLabel:{color:'#111',fontSize:10,fontWeight:700,fontFamily:T.mono,
+    axisLabel:{color:"#8fb2c9",fontSize:10,fontWeight:700,fontFamily:T.mono,
       formatter:(v,i)=>i%Math.ceil(s.length/6)===0?String(v).slice(5):''},
-    axisLine:{lineStyle:{color:'#111',width:2}}});
+    axisLine:{lineStyle:{color:"#8fb2c9",width:2}}});
   function draw(){
     let s = curData ? (curMode==='mv' ? curData.mv : curMode==='px' ? curData.px : curData.val) : null;
     if (!s || !s.length){
@@ -1990,16 +2083,16 @@ safe('选中资产走势', ()=>{
             return `${s[i][0]}<br>市值 ${wan(m0)} · 净投入 ${wan(c0)}<br>浮盈 ${d0>=0?'+':'−'}${wan(Math.abs(d0))}（${c0?(d0/c0*100).toFixed(1):'0.0'}%）`; }},
         grid:{left:54,right:14,top:14,bottom:26},
         xAxis:AXIS(s),
-        yAxis:{type:'value',min:yLo-yPad,max:yHi+yPad,scale:true,splitLine:{lineStyle:{color:'#e4e0d4'}},
-          axisLabel:{show:!window._privacy,color:'#111',fontSize:10,fontWeight:700,formatter:v=>(v/1e4).toFixed(0)+'万'}},
+        yAxis:{type:'value',min:yLo-yPad,max:yHi+yPad,scale:true,splitLine:{lineStyle:{color:'#1d4359'}},
+          axisLabel:{show:!window._privacy,color:"#8fb2c9",fontSize:10,fontWeight:700,formatter:v=>(v/1e4).toFixed(0)+'万'}},
         series:[
           Object.assign({id:'trend-band-base',type:'line',data:bandBase,areaStyle:{opacity:0}}, mute),
           Object.assign({id:'trend-band-up',type:'line',data:bandUp,areaStyle:{color:'rgba(196,30,58,.16)'}}, mute),
           Object.assign({id:'trend-band-down',type:'line',data:bandDn,areaStyle:{color:'rgba(10,122,69,.16)'}}, mute),
           {id:'trend-cost',type:'line',data:cost,symbol:'none',z:3,
-            lineStyle:{color:'#111',width:2.5,type:'dashed'}},
+            lineStyle:{color:"#8fb2c9",width:2.5,type:'dashed'}},
           {id:'trend-market',type:'line',data:mv,symbol:'circle',symbolSize:14,showSymbol:false,z:4,
-            itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
+            itemStyle:{color:'#1baf7a',borderColor:"#1d4359",borderWidth:3},
             emphasis:{scale:false},
             lineStyle:{color:'#2a78d6',width:4}}
         ]
@@ -2034,14 +2127,14 @@ safe('选中资产走势', ()=>{
       grid:{left:54,right:14,top:14,bottom:26},
       xAxis:AXIS(s),
       // min/max:null 清掉双线视图残留的显式量程(否则总净资产~870万会被锁在权益~250万轴上)
-      yAxis:{type:'value',min:null,max:null,scale:true,splitLine:{lineStyle:{color:'#e4e0d4'}},
-        axisLabel:{show:isPx||!window._privacy,color:'#111',fontSize:10,fontWeight:700,
+      yAxis:{type:'value',min:null,max:null,scale:true,splitLine:{lineStyle:{color:'#1d4359'}},
+        axisLabel:{show:isPx||!window._privacy,color:"#8fb2c9",fontSize:10,fontWeight:700,
           formatter: isPx ? (v=>fmtPx(v)) : (v=>(v/1e4).toFixed(0)+'万')}},
       series:[{id:'trend-value',type:'line',smooth:false,data:s.map(p=>p[1]),
         symbol:'circle',symbolSize:14,showSymbol:false,   // 平时隐藏,悬停处浮现 → 对齐净值走势的小绿点
-        itemStyle:{color:'#1baf7a',borderColor:'#111',borderWidth:3},
+        itemStyle:{color:'#1baf7a',borderColor:"#1d4359",borderWidth:3},
         emphasis:{scale:false},
-        lineStyle:{color:'#111',width:4},
+        lineStyle:{color:"#45cfe6",width:3},
         areaStyle:{color:'rgba(42,120,214,.15)'}}]
     }, {notMerge:false,replaceMerge:['series']});
   }
