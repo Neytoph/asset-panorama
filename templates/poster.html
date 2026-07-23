@@ -1075,9 +1075,13 @@ safe('大类配置色块', function(){
       cellEls.push(el);
     });
     const shares = items.map(x=>Math.max(x.value/total*100, 0.4));
-    if(morphFrom && morphFrom.length){
-      /* FLIP:hover 瓦片矩形 → 新色块矩形,克隆层飞行过渡 */
-      cellEls.forEach((c,i)=>{ c.style.transition = 'none';   // 直接落到终值,避免 flex 过渡污染 FLIP 终点测量
+    if(_RM){
+      /* 减少动态:直接落终值,不做飞行/展开 */
+      cellEls.forEach((c,i)=>{ c.style.transition='none'; c.style.flex = `${shares[i]} 1 0%`; c.style.visibility=''; });
+    } else if(morphFrom && morphFrom.length){
+      /* FLIP:hover 瓦片矩形 → 新色块矩形,克隆层飞行(淡入 + 飞行投影 + 回弹缓动 + 名称标签) */
+      const EASE = 'cubic-bezier(.34,1.28,.5,1)', DUR = 560;   // 落位轻微回弹
+      cellEls.forEach((c,i)=>{ c.style.transition = 'none';    // 直接落到终值,避免 flex 过渡污染 FLIP 终点测量
         c.style.flex = `${shares[i]} 1 0%`; c.style.visibility = 'hidden'; });
       requestAnimationFrame(()=>{
         const wr = wrap.getBoundingClientRect();
@@ -1090,18 +1094,23 @@ safe('大类配置色块', function(){
           const f = src ? src.rect : to;
           const d = document.createElement('div');
           d.style.cssText = 'position:absolute;box-sizing:border-box;border:1.5px solid #111;overflow:hidden;'
+            + 'display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:12px;white-space:nowrap;'
             + `left:${f.left-wr.left}px;top:${f.top-wr.top}px;width:${f.width}px;height:${f.height}px;`
             + `background:${it.amt ? lighten(it.classHex,it.amt) : it.classHex};`
-            + 'transition:all .45s cubic-bezier(.16,1,.3,1)';
+            + `opacity:${src?0.55:0};box-shadow:0 0 0 rgba(0,0,0,0);`
+            + `transition:left ${DUR}ms ${EASE},top ${DUR}ms ${EASE},width ${DUR}ms ${EASE},height ${DUR}ms ${EASE},opacity ${DUR*0.6}ms ease,box-shadow ${DUR}ms ${EASE}`;
+          d.textContent = to.width>46 ? it.name : '';
           layer.appendChild(d);
           requestAnimationFrame(()=>requestAnimationFrame(()=>{
             d.style.left = (to.left-wr.left)+'px';
             d.style.top = (to.top-wr.top)+'px';
             d.style.width = to.width+'px';
             d.style.height = to.height+'px';
+            d.style.opacity = '1';
+            d.style.boxShadow = '4px 4px 0 rgba(20,18,12,.32)';
           }));
         });
-        setTimeout(()=>{ layer.remove(); cellEls.forEach(c=>{ c.style.visibility=''; }); }, 500);
+        setTimeout(()=>{ layer.remove(); cellEls.forEach(c=>{ c.style.visibility=''; }); }, DUR+70);
       });
     } else {
       /* 无瓦片来源(初始/返回):flex-grow 展开动画 */
@@ -1166,15 +1175,17 @@ safe('净值走势', function(){
     g+=`<rect x="${x(i)-6}" y="${y(H[i])-6}" width="12" height="12" transform="rotate(45 ${x(i)} ${y(H[i])})" fill="var(--c-gold)" stroke="#111" stroke-width="2.5"><title>${txt}</title></rect>`;
   });
   g+=`<line id="sp-xh" y1="${P.t}" y2="${HT-P.b}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
+  g+=`<line id="sp-yh" x1="${P.l}" x2="${W-P.r}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
   g+=`<circle id="sp-hd" r="7" fill="var(--c-bond)" stroke="#111" stroke-width="3" opacity="0" pointer-events="none"/>`;
   svg.innerHTML=g;
-  const xh=svg.querySelector('#sp-xh'), hd=svg.querySelector('#sp-hd');
+  const xh=svg.querySelector('#sp-xh'), yh=svg.querySelector('#sp-yh'), hd=svg.querySelector('#sp-hd');
   const tip=document.getElementById('spark-tip');
   const onPt=e=>{                        // pointer 事件:鼠标悬停 + 触屏点按/滑动都走这里
     const r=svg.getBoundingClientRect(), mx=(e.clientX-r.left)*W/r.width;
     let i=Math.round((mx-P.l)/((W-P.l-P.r)/Math.max(1,n-1)));
     i=Math.max(0,Math.min(n-1,i));
     xh.setAttribute('x1',x(i)); xh.setAttribute('x2',x(i)); xh.setAttribute('opacity',1);
+    yh.setAttribute('y1',y(H[i])); yh.setAttribute('y2',y(H[i])); yh.setAttribute('opacity',1);   // 横向十字线
     hd.setAttribute('cx',x(i)); hd.setAttribute('cy',y(H[i])); hd.setAttribute('opacity',1);
     tip.style.opacity=1;
     tip.style.left=Math.min(x(i)*r.width/W+12, r.width-118)+'px';
@@ -1183,7 +1194,7 @@ safe('净值走势', function(){
   };
   svg.addEventListener('pointermove',onPt);
   svg.addEventListener('pointerdown',onPt);
-  svg.addEventListener('pointerleave',()=>{ tip.style.opacity=0; xh.setAttribute('opacity',0); hd.setAttribute('opacity',0); });
+  svg.addEventListener('pointerleave',()=>{ tip.style.opacity=0; xh.setAttribute('opacity',0); yh.setAttribute('opacity',0); hd.setAttribute('opacity',0); });
   document.getElementById('spark-cap').innerHTML =
     `<span>${fmtDate(DATE[0])} · ${H[0].toFixed(1)}万</span><span>峰值 ${fmtDate(DATE[pk])} · ${H[pk].toFixed(1)}万</span><span>${fmtDate(DATE[n-1])} · ${H[n-1].toFixed(1)}万</span>`;
 });
@@ -1738,6 +1749,12 @@ safe('演示脱敏', function(){
 /* ═══ ECharts（粗野海报风）═══ */
 const TIP = {backgroundColor:'#111', borderWidth:0,
   textStyle:{color:'#f4f1ea',fontSize:12,fontFamily:T.sans,fontWeight:700}};
+// 联动十字线:悬停时纵横虚线 + 轴端标签(黑底纸字),跨轴读数
+const XHAIR = {type:'cross',
+  lineStyle:{color:'#111',width:1.2,type:'dashed'},
+  crossStyle:{color:'#111',width:1.2,type:'dashed'},
+  label:{backgroundColor:'#111',color:'#f4f1ea',fontFamily:T.mono,fontSize:10,
+    borderWidth:0,padding:[3,6],shadowBlur:0}};
 
 /* 旭日图（下钻 + 联动） */
 safe('旭日图', ()=>{
@@ -1900,7 +1917,7 @@ safe('现金流月度走势', ()=>{
     symbol:r.已对账==='是'?'circle':'emptyCircle',symbolSize:8,
     itemStyle:{color:'#eda100',borderColor:'#111',borderWidth:2}}));
   echarts.init(el).setOption({
-    tooltip:{trigger:'axis',...TIP,formatter:params=>{
+    tooltip:{trigger:'axis',axisPointer:XHAIR,...TIP,formatter:params=>{
       const r = h[params[0].dataIndex];
       const tag = r.已对账==='是'?'已对账':'草稿';
       return `${r.月份} ${tag}<br>净结余 ¥${r.净结余.toLocaleString()}<br>储蓄率 ${(r.储蓄率*100).toFixed(1)}%`
@@ -1978,7 +1995,7 @@ safe('选中资产走势', ()=>{
       const bandDn = s.map(p=>Math.max(p[2]-p[1],0));
       const mute = {symbol:'none', lineStyle:{opacity:0}, silent:true, emphasis:{disabled:true}, tooltip:{show:false}, stack:'pnl'};
       tc.setOption({
-        tooltip:{trigger:'axis',axisPointer:{lineStyle:{color:'#111',width:1.5,type:'dashed'}},...TIP,
+        tooltip:{trigger:'axis',axisPointer:XHAIR,...TIP,
           formatter: ps=>{ const i=ps[0].dataIndex, m0=s[i][1], c0=s[i][2], d0=m0-c0;
             return `${s[i][0]}<br>市值 ${wan(m0)} · 净投入 ${wan(c0)}<br>浮盈 ${d0>=0?'+':'−'}${wan(Math.abs(d0))}（${c0?(d0/c0*100).toFixed(1):'0.0'}%）`; }},
         grid:{left:54,right:14,top:14,bottom:26},
@@ -2018,8 +2035,7 @@ safe('选中资产走势', ()=>{
     hint.textContent = `${curTitle} ── ${s.length}点 · ${isPx?'价格 '+csym+fmtPx(l)+' · ':''}区间 ${chg>=0?'+':''}${(chg*100).toFixed(1)}%`
       + (nbSum ? ` · 已剔除净投入 ${wan(nbSum)}` : '');
     tc.setOption({
-      tooltip:{trigger:'axis',
-        axisPointer:{lineStyle:{color:'#111',width:1.5,type:'dashed'}},...TIP,
+      tooltip:{trigger:'axis',axisPointer:XHAIR,...TIP,
         formatter: isPx ? (ps=>{ const p=ps[0]; const d=s[p.dataIndex][0], q=qat(d);
             return `${d} · ${csym}${fmtPx(p.value)}`
               + (q>0 && !window._privacy ? `<br>市值 ${wan(p.value*q*FXR)}（${q%1?q.toFixed(2):q}份）` : ''); })
