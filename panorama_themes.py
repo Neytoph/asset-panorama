@@ -127,6 +127,15 @@ def kpis_html(D, t):
 def banner_html(D, t):
     """数据健康/手动账户过期 提示横条；无问题则不显示。"""
     msgs = []
+    today_deg = D.get("degradedToday") or []
+    if today_deg:
+        msgs.append(("warn", "今日数据降级（" + "、".join(today_deg)
+                     + "）：行情/汇率走了兜底、非实时，网络恢复后自动回补"))
+    dd = D.get("degradedDays") or {}
+    past = sorted(d for d in dd if d != (D.get("history") or [{}])[-1].get("date"))
+    if past:
+        msgs.append(("warn", f"近期 {len(past)} 天数据降级待回补（{past[0]}~{past[-1]}，断网兜底）"
+                     "：净值曲线已标红，网络恢复后按真实收盘自动修复"))
     if not D.get("fxLive", True):
         msgs.append(("warn", "汇率为兜底值（非实时），美股/港股市值可能略有偏差"))
     for lv, m in D.get("warnings", []):
@@ -387,7 +396,7 @@ def render(theme_key, D=None):
     {banner_html(D, t)}
     <div class="grid">
       <div class="card c3"><h3>资产构成</h3><div class="hint">净资产 ¥{wan(D['networth'])} · 环形=大类占比</div><div id="c_donut" class="chart"></div></div>
-      <div class="card c3"><h3>净值走势</h3><div class="hint">总净资产 vs 金融资产</div><div id="c_line" class="chart"></div></div>
+      <div class="card c3"><h3>净值走势</h3><div class="hint" title="{D.get('quoteBasis','')}">总净资产 vs 金融资产 · <span style="opacity:.7">口径:滚动最新·美股T-1</span>{'  · <span style="color:'+t['bad']+'">🔴=数据降级日(兜底待回补)</span>' if D.get('degradedDays') else ''}</div><div id="c_line" class="chart"></div></div>
       <div class="card c6"><h3>持仓地图 · 旭日图</h3><div class="hint">大类 → 子类 → 持仓 · 点击逐层下钻（点中心回上级）· 悬停看明细</div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
           <span class="assetseg" id="asset-seg"><button data-m="fin" class="on">仅金融</button><button data-m="all">全部资产</button></span>
@@ -463,6 +472,11 @@ function mkBar(id,obj,color){{
     coord:[di[d],h[di[d]].总净资产],symbol:'diamond',symbolSize:13,
     itemStyle:{{color:T.warn,borderColor:T.dim,borderWidth:1}},
     info:bigByDate[d].map(t=>t[0]+' '+t[2]+' '+t[1]+' '+fmtWan(t[3])).join('<br>')}}));
+  // 降级日标红(断网兜底、非真实收盘)：网络恢复后自愈会把这些点抹平
+  const dmk=h.filter(r=>r.degraded).map(r=>({{
+    coord:[di[r.date],r.总净资产],symbol:'pin',symbolSize:26,
+    itemStyle:{{color:T.bad||'#dc2626'}},
+    info:r.date+' ⚠ 数据降级：行情/汇率走兜底，非当日真实收盘（网络恢复后自动回补真实值）'}}));
   echarts.init(document.getElementById('c_line')).setOption({{
     tooltip:{{trigger:'axis',valueFormatter:fmtWan}},
     legend:{{data:['总净资产','金融资产'],textStyle:{{color:T.ink,fontSize:11}},top:0}},
@@ -475,7 +489,7 @@ function mkBar(id,obj,color){{
       {{name:'总净资产',type:'line',smooth:true,symbol:'circle',symbolSize:6,data:h.map(r=>r.总净资产),
         lineStyle:{{color:T.line1,width:2.5}},itemStyle:{{color:T.line1}},
         areaStyle:{{color:new echarts.graphic.LinearGradient(0,0,0,1,[{{offset:0,color:T.line1+'44'}},{{offset:1,color:T.line1+'05'}}])}},
-        markPoint:{{data:bmk,label:{{show:false}},
+        markPoint:{{data:bmk.concat(dmk),label:{{show:false}},
           tooltip:{{trigger:'item',formatter:p=>(p.data&&p.data.info)||''}}}}}},
       {{name:'金融资产',type:'line',smooth:true,symbol:'circle',symbolSize:6,data:h.map(r=>r.金融资产),
         lineStyle:{{color:T.line2,width:2.5}},itemStyle:{{color:T.line2}}}}

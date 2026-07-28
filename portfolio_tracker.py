@@ -17,6 +17,7 @@ import re
 import sys
 import datetime
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
 
 import storage
@@ -264,7 +265,8 @@ def fetch_quotes(holdings):
                 _reset_sina_breaker(cache)
                 for tx, price in sina_prices.items():
                     prices[tx] = price
-                    meta[tx] = {"source": "sina", "stale": False, "date": today}
+                    meta[tx] = {"source": "sina", "stale": False, "date": today,
+                                "from_cache": False}
             else:
                 _record_sina_failure(cache)
         else:
@@ -277,7 +279,8 @@ def fetch_quotes(holdings):
         for tx, price in _fetch_tencent(missing_tx).items():
             if tx not in prices and price > 0:
                 prices[tx] = price
-                meta[tx] = {"source": "tencent", "stale": False, "date": today}
+                meta[tx] = {"source": "tencent", "stale": False, "date": today,
+                            "from_cache": False}
 
     for tx, price in prices.items():
         m = meta.get(tx, {})
@@ -298,10 +301,13 @@ def fetch_quotes(holdings):
             age = 999
         prices[tx] = float(cached["price"])
         meta[tx] = {
+            # 走缓存兜底：本次没抓到实时价，沿用上次成功抓取的收盘。
+            # source 记「原始抓取源」仅供追溯，from_cache=True 才是「这不是实时价」的判据。
             "source": cached.get("source", "cache"),
             "stale": age > QUOTE_STALE_DAYS,
             "date": cached.get("date"),
             "age_days": age,
+            "from_cache": True,
         }
 
     _save_quotes_cache(cache)
@@ -386,6 +392,8 @@ def compute():
             "missing": missing,
             "quote_source": qm.get("source") if sym and price is not None else None,
             "quote_stale": qm.get("stale", False) if sym and price is not None else False,
+            # 本次走了缓存兜底(没抓到实时价)——不管缓存新旧,都是「今天的价没更新」的信号
+            "quote_cached": qm.get("from_cache", False) if sym and price is not None else False,
             "流动性": h.get("流动性", "数日"),
             "股息率": float(h.get("股息率") or 0) / 100,
         })
@@ -483,12 +491,18 @@ def persist(R):
 
     missing = [h["name"] for h in R["holdings"] if h.get("missing")]
     stale = [h["name"] for h in R["holdings"] if h.get("quote_stale")]
+    # 走了缓存兜底但还没老到 stale 的：本次没抓到实时价，行情停在上次收盘。
+    # 这正是 07-27 断网时被漏标的那一类——缓存 age≤7 天，却是「今天的价没更新」。
+    cached = [h["name"] for h in R["holdings"]
+              if h.get("quote_cached") and not h.get("quote_stale") and not h.get("missing")]
     fx_fallback = not R["fx"].get("_live", True)
     degraded = []
     if missing:
         degraded.append(f"{len(missing)}只行情缺失")
     if stale:
         degraded.append(f"{len(stale)}只陈旧行情")
+    if cached:
+        degraded.append(f"{len(cached)}只行情兜底")
     if fx_fallback:
         degraded.append("汇率兜底")
 
@@ -528,7 +542,186 @@ def persist(R):
     for h in R["holdings"]:
         _add("持仓", h["name"], h["value"])
     storage.save_table("history_full", ["date", "类型", "名称", "金额"], rows)
+
+    # 降级日台账(独立文档，不污染 history 数值表)：供「自动自愈」回补历史行情。
+    # 只登记「有 history 行、但行情/汇率走了兜底」的天；这天健康则清除旧登记。
+    dd = storage.load_doc("degraded_days", {}) or {}
+    heal_worthy = [d for d in degraded if "行情兜底" in d or "陈旧行情" in d or d == "汇率兜底"]
+    if heal_worthy:
+        dd[today] = heal_worthy
+    else:
+        dd.pop(today, None)
+    storage.save_doc("degraded_days", dd, backup=False)
     return {"recorded": True, "degraded": degraded}
+
+
+# ───────────────────────── 自动自愈 ─────────────────────────
+# 断网/源故障那天先记兜底值 + 标降级(degraded_days)止血；网络恢复后由此把
+# 降级日的行情回补成「当时本该抓到的真实收盘」，重算净值、清降级标记。
+# 口径与 latest_snapshot 一致(①滚动最新)：
+#   · A股/港股 → 回补 D 日当天收盘；D 是休市日(东财无该日K线)则保持上一收盘(数据本就对)。
+#   · 美股     → 回补 D 的「前一美东交易日」收盘(北京 D 日晚跑时，美股最新收盘就是它)。
+# 拿不到历史汇率(免费源只给实时)，用当前实时汇率近似历史日，并在 run.log 注明。
+HEAL_LOOKBACK_DAYS = 14
+
+
+def _qty_asof(name, date_iso, hist_rows):
+    """按逐笔台账推演某持仓在 date_iso 收盘时的持有量(期初/买入记正、卖出记负)。"""
+    led = 0.0
+    for r in hist_rows:
+        if r.get("名称") != name or (r.get("日期") or "") > date_iso:
+            continue
+        try:
+            q = float((r.get("数量") or "").replace(",", "").strip())
+        except ValueError:
+            continue
+        led += -q if r.get("动作") == "卖出" else q
+    return led
+
+
+HOLIDAY = "holiday"   # D 非交易日：无需回补(兜底沿用上一收盘本就正确)
+
+
+def _resolve_close(klines, date_iso, us_market):
+    """从东财日线 [[date,close],...] 判定回补 D 日该用的收盘价。
+      float    → 用这个真实收盘回补
+      HOLIDAY  → D 非交易日(缓存已覆盖到 D 之后却无 D 当天)，不回补、原值即正确
+      None     → 缓存还没更新到 D，数据不足，留待下轮(绝不用旧价硬补)
+    美股按①口径取「D 的前一美东交易日」= 缓存中 date<D 的最后一条，且须新到 ≥D-4 天。"""
+    if not klines:
+        return None
+    last = klines[-1][0]
+    if us_market:
+        prior = [(d, c) for d, c in klines if d < date_iso]
+        if not prior:
+            return None
+        d0 = datetime.date.fromisoformat(date_iso)
+        # 缓存最后一条美东收盘必须落在 D 前 3 天内(正常周末回看至多 3 天)；
+        # 更远=中间缺了美东交易日(缓存没刷新到 D 时段)，判数据不足、留待下轮，绝不用旧价硬补。
+        if (d0 - datetime.date.fromisoformat(prior[-1][0])).days > 3:
+            return None
+        return prior[-1][1]
+    same = [c for d, c in klines if d == date_iso]
+    if same:
+        return same[0]                 # D 是交易日且已抓到 → 回补
+    return HOLIDAY if last >= date_iso else None
+
+
+def self_heal(lookback_days=HEAL_LOOKBACK_DAYS, dry_run=False, log=print):
+    """回补最近 lookback_days 内登记的降级日行情。返回已修复日期列表。"""
+    dd = storage.load_doc("degraded_days", {}) or {}
+    if not dd:
+        return []
+    today = datetime.date.today()
+    targets = sorted(d for d in dd
+                     if 0 <= (today - datetime.date.fromisoformat(d)).days <= lookback_days)
+    if not targets:
+        return []
+
+    holdings_csv = read_csv("holdings.csv")
+    hist_rows = read_csv("holdings_history.csv")
+    # 行情类持仓(有腾讯代码=可自动取价)才回补；期权等手动估值持仓保持原值
+    quoted = {h["名称"]: h for h in holdings_csv if (h.get("腾讯查询代码") or "").strip()}
+
+    fx = get_fx()
+    if not fx.get("_live"):
+        log("  ⚠️ 自愈：实时汇率仍不可用，本轮跳过(等汇率恢复再回补，避免用兜底汇率二次污染)")
+        return []
+
+    # 纯读 klines_cache(零网络)：日线由每日 K 线刷新维护(有节流/熔断)，自愈只做回补计算。
+    # 缓存没更新到某降级日 → 该日相关持仓判为「数据不足」，本轮不动，等缓存补齐下轮再修。
+    kcache = storage.load_doc("klines_cache", {}) or {}   # {secid: [[date,close],...]}
+
+    hist_main = {r["date"]: dict(r) for r in read_csv("history.csv", [])}
+    hf_rows = read_csv("history_full.csv", [])
+    hf_by_date = defaultdict(list)
+    for r in hf_rows:
+        hf_by_date[r["date"]].append(r)
+
+    healed, still_degraded = [], {}
+    for D in targets:
+        main_row = hist_main.get(D)
+        drows = hf_by_date.get(D)
+        if not main_row or not drows:
+            continue   # 该日没有 history 行，无从回补
+        holding_rows = {r["名称"]: r for r in drows if r["类型"] == "持仓"}
+
+        # 增量法：只把「回补持仓」的市值差额叠加到原大类上。
+        # 账户穿透进权益的投顾部分、期权手动值、未取到行情的持仓——全部零增量、自动不动。
+        d_eq = d_gold = 0.0
+        touched, unresolved = [], []
+        for name, hrow in holding_rows.items():
+            h = quoted.get(name)
+            if not h:                               # 手动估值(期权等) → 不回补，无增量
+                continue
+            secid = (h.get("东财secid") or "").strip()
+            close = _resolve_close(kcache.get(secid, []), D, h["市场"] == "美股")
+            if close == HOLIDAY:
+                continue                            # D 该市场休市，原值即正确，不算未取到
+            qty = _qty_asof(name, D, hist_rows)
+            if close is None or qty == 0:
+                unresolved.append(name)
+                continue                            # 缓存没到该日 → 留待下轮
+            val = close * qty * fx[MARKET_CCY.get(h["市场"], "CNY")]
+            old = float(hrow["金额"])
+            delta = val - old
+            if abs(delta) > 1:
+                touched.append((name, old, val))
+            hrow["金额"] = round(val)
+            if HOLDING_CLASS.get(h["资产类型"], "权益") == "黄金":
+                d_gold += delta
+            else:
+                d_eq += delta
+
+        old_eq = float(main_row.get("权益", 0) or 0)
+        old_gold = float(main_row.get("黄金", 0) or 0)
+        old_nw = float(main_row.get("总净资产", 0) or 0)
+        old_fin = float(main_row.get("金融资产", 0) or 0)
+        new_eq, new_gold = old_eq + d_eq, old_gold + d_gold
+        new_fin, new_nw = old_fin + d_eq + d_gold, old_nw + d_eq + d_gold
+
+        log(f"  · {D}  权益 {old_eq:,.0f} → {new_eq:,.0f}"
+            f"（回补 {len(touched)} 只{'，'+str(len(unresolved))+' 只未取到' if unresolved else ''}）"
+            f"  净资产 {old_nw:,.0f} → {new_nw:,.0f}")
+        for nm, o, n in touched:
+            log(f"      {nm}: {o:,.0f} → {n:,.0f}")
+
+        if dry_run:
+            continue
+
+        # 落库：history 该日行(只动权益/黄金/金融资产/总净资产，房产/债券/现金不碰)
+        main_row["权益"] = round(new_eq)
+        main_row["黄金"] = round(new_gold)
+        main_row["金融资产"] = round(new_fin)
+        main_row["总净资产"] = round(new_nw)
+        # history_full 该日 大类/汇总 行
+        for r in drows:
+            if r["类型"] == "大类" and r["名称"] == "权益":
+                r["金额"] = round(new_eq)
+            elif r["类型"] == "大类" and r["名称"] == "黄金":
+                r["金额"] = round(new_gold)
+            elif r["类型"] == "汇总" and r["名称"] == "总净资产":
+                r["金额"] = round(new_nw)
+            elif r["类型"] == "汇总" and r["名称"] == "金融资产":
+                r["金额"] = round(new_fin)
+        if unresolved:
+            still_degraded[D] = [f"{len(unresolved)}只行情兜底(仍未取到)"]
+        healed.append(D)
+
+    if dry_run or not healed:
+        return healed
+
+    cols = ["date", "总净资产", "金融资产", "房产", "权益", "债券类固收", "现金", "黄金"]
+    storage.save_table("history", cols, [hist_main[d] for d in sorted(hist_main)])
+    storage.save_table("history_full", ["date", "类型", "名称", "金额"], hf_rows)
+    # 更新降级台账：修好的清掉，未完全修好的留待下轮
+    for D in healed:
+        dd.pop(D, None)
+    dd.update(still_degraded)
+    storage.save_doc("degraded_days", dd, backup=False)
+    log(f"  ✅ 自愈回补 {len(healed)} 天：{', '.join(healed)}"
+        + ("；仍有未取到行情的天留待下轮" if still_degraded else ""))
+    return healed
 
 
 # ───────────────────────── 主 ─────────────────────────

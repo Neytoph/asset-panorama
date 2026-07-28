@@ -568,6 +568,11 @@ window.alertSvg = function(kind){
 (function(){
   const ICON_CLASS = {'🔴':'crit', '🟡':'warn', '🟠':'ser', 'warn':'warn', 'info':'info', '✅':'ok'};
   const items = [];
+  const _dToday = PD.degradedToday||[];
+  if (_dToday.length) items.push(['warn','今日数据降级（'+_dToday.join('、')+'）：行情/汇率走兜底、非实时，网络恢复后自动回补']);
+  const _lastD = (PD.history||[]).length ? PD.history[PD.history.length-1].date : '';
+  const _dPast = Object.keys(PD.degradedDays||{}).filter(d=>d!==_lastD).sort();
+  if (_dPast.length) items.push(['warn','近期 '+_dPast.length+' 天数据降级待回补（'+_dPast[0]+'~'+_dPast[_dPast.length-1]+'，断网兜底）：净值曲线已标红，网络恢复后按真实收盘自动修复']);
   if (PD.fxLive === false) items.push(['warn','汇率为兜底值（非实时），美股/港股市值可能略有偏差']);
   (PD.alerts||[]).forEach(a=>items.push(a));
   (PD.warnings||[]).forEach(([lv,m])=>items.push([lv,m]));

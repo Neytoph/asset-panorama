@@ -568,6 +568,18 @@ def collect(persist_history=True, fetch_klines=True):
         cache["_meta"] = meta
         storage.save_doc("klines_cache", cache, backup=False)
 
+    # 自动自愈：K线缓存刚刷到最新，趁机把最近降级日(断网兜底)回补成真实收盘。
+    # 只依赖缓存新鲜度(不依赖 persist)——日常 panorama_themes 渲染(fetch_klines=True)即触发。
+    # 网络恢复的当天这里就把昨天的疤抹平；缓存没覆盖到的天留待下轮。
+    if fetch_klines:
+        try:
+            from portfolio_tracker import self_heal
+            healed = self_heal(log=lambda *a: None)
+            if healed:
+                history = read_csv("history.csv", [])   # 回补改了 history，重读供后续图表/输出
+        except Exception as _e:
+            print(f"  ⚠️ 自愈跳过：{_e}", file=__import__('sys').stderr)
+
     # 杠铃视图分桶：安全腿(亏不了) / 核心(多元化beta) / 冒险腿(非对称) / 中间(待审视)
     LOWVOL_SINGLE = {"长江电力"}
     barbell = {"安全腿": 0.0, "核心": 0.0, "冒险腿": 0.0, "中间": 0.0}
@@ -632,6 +644,10 @@ def collect(persist_history=True, fetch_klines=True):
     alerts = (list(check_alerts(R)) + subs.reminders(subs_list, today, fx)
               + ins.reminders(policies, today))
 
+    # 降级台账(断网兜底且未回补的天) + 当日降级原因 → 供面板标红/提示，不藏休市只标故障。
+    dd_doc = storage.load_doc("degraded_days", {}) or {}
+    snap_degraded = (storage.load_doc("latest_snapshot", {}) or {}).get("degraded", [])
+
     out = {
         "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "fxUSD": R["fx"]["USD"], "fxHKD": R["fx"]["HKD"],
         "networth": round(nw), "financial": round(fin), "equity": round(equity),
@@ -685,8 +701,14 @@ def collect(persist_history=True, fetch_klines=True):
         "subsUpcoming": subs_upcoming,
         "subsCalendar": subs_calendar,
         "fxLive": R["fx"].get("_live", True),
+        # 降级/口径：只标故障(断网兜底)，不藏休市；已回补的天不再标红(数据已正确)。
+        "degradedDays": dd_doc,          # {date: [原因]} 断网兜底且未回补的历史日
+        "degradedToday": snap_degraded,  # 今日快照的降级原因(空=今天健康)
+        "quoteBasis": ("净值口径：各市场取收盘最新价，美股为前一美东交易日（滚动最新，"
+                       "跨时区不强行对齐）。断网当日先兜底沿用昨值并标注，网络恢复后自动回补真实收盘。"),
         "history": [{"date": h["date"], "总净资产": float(h["总净资产"]),
-                     "金融资产": float(h["金融资产"])} for h in history],
+                     "金融资产": float(h["金融资产"]),
+                     "degraded": bool(dd_doc.get(h["date"]))} for h in history],
         "tradeNet": trade_net, "tradeMarks": trade_marks, "bigTrades": big_trades,
         "pxMeta": px_meta,
         "tree": tree_list,

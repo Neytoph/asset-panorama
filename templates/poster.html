@@ -387,6 +387,8 @@
   </div>
 </div>
 
+<div id="degraded-banner" style="display:none"></div>
+
 <div class="blk reloc-banner" id="reloc-banner" style="display:none"></div>
 
 <section class="zone z-asset">
@@ -611,6 +613,22 @@ safe('演示横幅', function(){
   b.innerHTML = '🎭 演示数据 · 虚构人物「张小满」一家 —— 所有数字均为示例,与任何真实个人无关。'
     + '<span style="font-weight:700;font-size:12.5px"><br>想填自己的数据?把 <code>demo/</code> 里的配置复制到项目根目录改成你的,'
     + '或用面板的「持仓管理 / 现金流」等 Tab 录入。详见 README「5 分钟上手」。</span>';
+});
+
+/* 数据降级横幅(断网兜底/待回补)——只标故障，不藏休市 */
+safe('降级横幅', function(){
+  const b = document.getElementById('degraded-banner');
+  if (!b) return;
+  const msgs = [];
+  const dToday = PD.degradedToday||[];
+  if (dToday.length) msgs.push('今日数据降级（'+dToday.join('、')+'）：行情/汇率走兜底、非实时');
+  const lastD = (PD.history||[]).length ? PD.history[PD.history.length-1].date : '';
+  const past = Object.keys(PD.degradedDays||{}).filter(d=>d!==lastD).sort();
+  if (past.length) msgs.push('近期 '+past.length+' 天数据降级待回补（'+past[0]+'~'+past[past.length-1]+'，断网兜底）：净值曲线已标红，网络恢复后自动按真实收盘修复');
+  if (!msgs.length) return;
+  b.style.cssText = 'display:block;background:#fde68a;border:3px solid var(--ink);'
+    + 'box-shadow:6px 6px 0 var(--ink);padding:12px 18px;margin-bottom:22px;font-weight:800;font-size:13px;line-height:1.5';
+  b.innerHTML = '⚠ ' + msgs.join('<br>');
 });
 
 /* 日期戳 */
