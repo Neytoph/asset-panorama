@@ -70,6 +70,21 @@
   #prop-strip { font-size: 11.5px; font-weight: 800; color: #6b6252; }
   #prop-strip b { color: var(--ink); }
   .hm { position: absolute; inset: 0; z-index: 6; }
+  /* 常驻内嵌热力:瓦片铺满整块,大类名(美股/A股宽基…)用浮在上层的角标标注,不占瓦片空间 */
+  .hm.inline { inset: 0; z-index: 2; }   /* 瓦片百分比定位,随块尺寸自适应 */
+  /* 无底色角标:靠四向纸色描边把字从瓦片上"抠"出来。
+     瓦片底色深浅不一(白/浅粉/深绿/深红都有),纯色字在某些块上会糊掉,
+     描边同时给深底(白边勾轮廓)和浅底(黑字本身)提供对比。 */
+  .heat-tag { position: absolute; top: 7px; left: 10px; z-index: 7; pointer-events: none;
+    color: var(--ink); font-weight: 900; font-size: 15px; letter-spacing: .02em;
+    white-space: nowrap;
+    text-shadow: 1.5px 0 0 var(--paper), -1.5px 0 0 var(--paper),
+                 0 1.5px 0 var(--paper), 0 -1.5px 0 var(--paper),
+                 1.2px 1.2px 0 var(--paper), -1.2px 1.2px 0 var(--paper),
+                 1.2px -1.2px 0 var(--paper), -1.2px -1.2px 0 var(--paper),
+                 0 0 6px rgba(244,241,234,.95); }
+  .heat-tag i { font-style: normal; font-weight: 800; font-size: 11.5px; opacity: .72; margin-left: 8px; }
+  .cell:has(.hm.inline) { padding: 0; }
   .hm-float { position: absolute; z-index: 9; width: 280px; height: 190px;
     background: #fff; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
     pointer-events: none; }
@@ -297,6 +312,24 @@
   .badge:not(.y):not(.o) { animation: badgepulse 1.5s ease-in-out infinite; }
   @keyframes badgepulse { 0%,100% { transform: rotate(-3deg) scale(1); } 50% { transform: rotate(-3deg) scale(.93); opacity: .82; } }
 
+  /* ── 现金流月账:摘要 + 折叠明细 + 计划/真实对照 ── */
+  .cf-d summary { cursor: pointer; list-style: none; }
+  .cf-d summary::-webkit-details-marker { display: none; }
+  .cf-d .tog::after { content: "展开明细 ▾"; font-size: 10px; font-weight: 800;
+    letter-spacing: .1em; opacity: .5; margin-left: 6px; }
+  .cf-d[open] .tog::after { content: "收起 ▴"; }
+  .cf-d summary:hover .tog::after { opacity: .9; }
+  .cf-d .cf-detail { padding: 2px 0 8px 14px; border-left: 2.5px solid var(--ink); margin: 4px 0 8px; }
+  .cf-d .cf-detail .kv { font-size: 12.5px; }
+  .cf-d + .cf-d { border-top: 2.5px dashed var(--ink); padding-top: 6px; }
+  .cf-cmp { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px 16px;
+    align-items: baseline; font-weight: 800; font-size: 13.5px;
+    border-top: 2.5px dashed var(--ink); margin-top: 12px; padding-top: 12px; }
+  .cf-cmp .v, .cf-cmp b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* 同行卡片保持等高(grid 默认 stretch)——试过 align-items:start 让卡片贴合内容,
+     空白是没了,但底边参差比空白更难受,已回退。空白靠给短卡片补内容解决,不靠改对齐。 */
+
   /* ── 动效包:悬停抬起 · 入场揭示 · 曲线自绘 · 行悬停(reduced-motion 见文末兜底) ── */
   .blk, .mosaic { transition: transform .18s cubic-bezier(.16,1,.3,1), box-shadow .18s cubic-bezier(.16,1,.3,1); }
   .blk:hover { transform: translate(-3px,-3px); box-shadow: 9px 9px 0 var(--ink); }
@@ -311,9 +344,19 @@
   .reveal { opacity: 0; transform: translateY(18px); }
   .reveal.in { opacity: 1; transform: none;
     transition: opacity .5s ease, transform .6s cubic-bezier(.16,1,.3,1); }
-  /* 色块悬停微光 */
+  /* 悬停高亮走「聚光灯」:压暗同级、指着的那块保持原色。
+     不引入任何新颜色——底色从深紫到纯白都有,任何一种描边色都会在某些块上消失,
+     而"周围暗下去"在所有底色上都成立。.hl 是给测试/键盘焦点用的同款类。 */
   .cell { transition: flex-grow .45s cubic-bezier(.16,1,.3,1), filter .18s ease; }
-  .cell:hover { filter: brightness(1.08) saturate(1.05); }
+  .mosaic:hover .cell { filter: brightness(.68) saturate(.6); }
+  .mosaic .cell:hover, .mosaic .cell.hl { filter: none;
+    outline: 3px solid var(--paper); outline-offset: -3px;
+    box-shadow: 6px 6px 0 rgba(0,0,0,.3); z-index: 5; }
+  .hm-tile { transition: filter .15s ease; }
+  .hm.inline:hover .hm-tile { filter: brightness(.72) saturate(.65); }
+  .hm.inline .hm-tile:hover, .hm.inline .hm-tile.hl { filter: none;
+    outline: 2.5px solid var(--ink); outline-offset: -2.5px;
+    box-shadow: inset 0 0 0 4px var(--paper); z-index: 4; }
   /* 净值粗线自绘 */
   .spark-line { stroke-dasharray: 1; stroke-dashoffset: 1;
     animation: sparkdraw 1.15s .25s cubic-bezier(.45,0,.15,1) forwards; }
@@ -394,10 +437,37 @@
 <section class="zone z-asset">
 <div class="zone-head"><span class="zone-kick"><span class="no">01</span>资产 ASSETS</span><span class="zone-stat" id="zs-asset"></span></div>
 <div class="mosaic-wrap">
-  <div class="mosaic-cap"><span id="mosaic-cap-t">大类配置 ── 色块面积 = 真实占比 · 悬停明细涨红跌绿 · 点击下钻</span><button
+  <div class="mosaic-cap"><span id="mosaic-cap-t">大类配置 ── 色块面积 = 真实占比 · 悬停明细涨红跌绿 · 点击下钻并联动下方持仓地图与走势</span><button
     class="mosaic-back" id="mosaic-back" style="display:none">← 返回</button><span
     class="mosaic-path" id="mosaic-path"></span></div>
   <div class="mosaic" id="mosaic"></div>
+</div>
+
+<div class="main2">
+  <div class="blk lead">
+    <div class="sec-h">持仓地图 <small>点击下钻 · 中心回上级 · 与上方色块双向联动 · 联动右图</small></div>
+    <div class="pad">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <span class="assetseg" id="asset-seg"><button data-m="fin" class="on">仅金融</button><button data-m="all">全部资产</button></span>
+        <span id="prop-strip"></span>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <div id="c_tree" class="chart" style="height:460px;flex:1;min-width:280px;position:relative"></div>
+        <div id="c_tree_legend" style="width:130px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="blk">
+    <div class="sec-h">选中资产走势
+      <span class="trendbar"><select id="c_trend_acct"></select>
+        <button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all" class="on">全部</button></span>
+    </div>
+    <div class="pad">
+      <div style="font-weight:800;font-size:12px;margin-bottom:8px" id="c_trend_hint">点击持仓地图查看走势</div>
+      <div id="c_trend" class="chart" style="height:250px"></div>
+      <div style="margin-top:14px" id="barbell"></div>
+    </div>
+  </div>
 </div>
 
 <div class="main">
@@ -431,33 +501,6 @@
   </div>
 </div>
 
-<div class="main2">
-  <div class="blk lead">
-    <div class="sec-h">持仓地图 <small>点击下钻 · 中心回上级 · 联动右图</small></div>
-    <div class="pad">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
-        <span class="assetseg" id="asset-seg"><button data-m="fin" class="on">仅金融</button><button data-m="all">全部资产</button></span>
-        <span id="prop-strip"></span>
-      </div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <div id="c_tree" class="chart" style="height:460px;flex:1;min-width:280px;position:relative"></div>
-        <div id="c_tree_legend" style="width:130px"></div>
-      </div>
-    </div>
-  </div>
-  <div class="blk">
-    <div class="sec-h">选中资产走势
-      <span class="trendbar"><select id="c_trend_acct"></select>
-        <button data-r="1m">近1月</button><button data-r="3m">近3月</button><button data-r="all" class="on">全部</button></span>
-    </div>
-    <div class="pad">
-      <div style="font-weight:800;font-size:12px;margin-bottom:8px" id="c_trend_hint">点击持仓地图查看走势</div>
-      <div id="c_trend" class="chart" style="height:250px"></div>
-      <div style="margin-top:14px" id="barbell"></div>
-    </div>
-  </div>
-</div>
-
 <div class="main2b">
   <div class="blk lead">
     <div class="sec-h">增长归因 <small id="attrib-sub">净资产为什么变 · 储蓄纪律 vs 市场 vs 房产 · 逐月闭合</small></div>
@@ -483,6 +526,10 @@
     <div class="pad"><div id="c_cf_trend" class="chart" style="height:220px"></div>
       <div class="note" id="cf-note" style="display:none"></div></div>
   </div>
+</div>
+<div class="blk" id="spend-blk" style="margin-top:24px;display:none">
+  <div class="sec-h">支出构成 <small id="spend-sub">其他实际支出花在哪 · 对账月切分</small></div>
+  <div class="pad" id="spend"></div>
 </div>
 </section>
 
@@ -876,7 +923,7 @@ safe('大类配置色块', function(){
   const pathEl = document.getElementById('mosaic-path');
   if (matchMedia('(hover: none)').matches) {   // 触屏没有悬停,说明文案不再提 heatmap
     const t = document.getElementById('mosaic-cap-t');
-    if (t) t.textContent = '大类配置 ── 色块面积 = 真实占比 · 点击下钻';
+    if (t) t.textContent = '大类配置 ── 色块面积 = 真实占比 · 点击下钻并联动下方持仓地图与走势';
   }
 
   const val = nd => nd.value!=null ? nd.value : (nd.children||[]).reduce((s,c)=>s+val(c),0);
@@ -894,14 +941,25 @@ safe('大类配置色块', function(){
   // 最近有波动的交易日涨跌:休市冻结点(Dietz后|p|≤0.01%,如周末的A股——含休市日补录交易的场合)
   // 向前回退,最多3步——周六仍显示周五的真实波动;date≠今天时展示层标注日期。
   // 序列尾超过3天(长假/断数)不显示;交易不占涨跌位。
+  // 数量归一化优先:昨值×(今数量/昨数量) 把加减仓的台阶抹平,只剩纯价格涨跌。
+  // 必须优先于 Dietz——补记的交易(交易日 < 录入日)会让市值台阶落在录入日而净投入挂在交易日,
+  // 按日期取净投入就取不到,加仓会被当成暴涨。归一化只看数量,与交易日期无关。
+  const qtyOn = (name, date) => (((PD.qtyByDate||{})[name]||{})[date]);
   const chgInfo = name => {
     const s = seriesOf(name);
     if(!s || s.length<2 || s[s.length-1][0] < MIND) return null;
     for(let i=s.length-1, k=0; i>=1 && k<3; i--, k++){
-      const a=s[i-1][1], b=s[i][1], nb=netBuy(name, s[i][0]);
+      const d0=s[i-1][0], d1=s[i][0];
+      let a=s[i-1][1], b=s[i][1], nb=0;
+      const q0=qtyOn(name,d0), q1=qtyOn(name,d1);
+      if(q0!=null && q1!=null && q0>0 && q1>0){
+        a = a * (q1/q0);                     // 昨值折算成「今天这么多份」的口径
+      } else {
+        nb = netBuy(name, d1);               // 拿不到数量(账户/投顾)才退回 Dietz
+      }
       if(!(a+nb)) return null;
       const p=(b-a-nb)/(a+nb);
-      if(Math.abs(p)>1e-4) return {p, date:s[i][0], num:b-a-nb, den:a+nb};
+      if(Math.abs(p)>1e-4) return {p, date:d1, num:b-a-nb, den:a+nb};
     }
     return null;
   };
@@ -988,8 +1046,13 @@ safe('大类配置色块', function(){
       host.style.top = (mosaic.offsetTop + mosaic.offsetHeight + 10)+'px';
       W = 274; H = 184;
     }
+    host.innerHTML = tilesHtml(kids, W, H);
+    heatEl = host;
+  }
+  // 瓦片 HTML:hover 浮层与常驻内嵌共用同一套布局/配色,保证两种形态长得一样
+  function tilesHtml(kids, W, H){
     const totalV = kids.reduce((s,k)=>s+k.value,0)||1;
-    host.innerHTML = squarify(kids.map(k=>({name:k.name, v:k.value, k})), 0, 0, W, H).map(r=>{
+    return squarify(kids.map(k=>({name:k.name, v:k.value, k})), 0, 0, W, H).map(r=>{
       const k = r.it.k;
       const p0 = chgNode(k.node);
       const p = (p0==null || p0===0) ? null : p0;   // 无近期数据/交易日恰平 → 白底、不标涨跌%
@@ -1003,11 +1066,11 @@ safe('大类配置色块', function(){
       const lg = r.w>=104 && r.h>=54;
       const share = (k.value/totalV*100).toFixed(1);
       const tip = `${k.name} · ${wan(k.value)} · ${share}%${p!=null?' · '+fmtChg(p)+(sd?'('+sd+')':''):''}`;
-      return `<div class="hm-tile${lg?' lg':''}" data-name="${esc(k.name)}" title="${esc(tip)}" style="left:${r.x.toFixed(1)}px;top:${r.y.toFixed(1)}px;`
-        + `width:${r.w.toFixed(1)}px;height:${r.h.toFixed(1)}px;background:${hs.bg};`
+      const pc = (v,base)=>(v/base*100).toFixed(3)+'%';   // 百分比定位:块尺寸变化时瓦片自适应
+      return `<div class="hm-tile${lg?' lg':''}" data-name="${esc(k.name)}" title="${esc(tip)}" style="left:${pc(r.x,W)};top:${pc(r.y,H)};`
+        + `width:${pc(r.w,W)};height:${pc(r.h,H)};background:${hs.bg};`
         + `color:${hs.fg}">${small?'':`<span class="n">${esc(k.name)}</span><span class="c" style="opacity:.9">${share}%${pctHtml}</span>`}</div>`;
     }).join('');
-    heatEl = host;
   }
 
   /* 下钻状态与渲染 */
@@ -1065,6 +1128,12 @@ safe('大类配置色块', function(){
         inner = slim
           ? `<span class="nm">${esc(it.name)}</span><span class="pc">${share.toFixed(1)}%</span>`
           : `<span class="nm">${esc(it.name)}</span><div><span class="pc">${share.toFixed(1)}%</span><div class="tg">${wan(it.value)}</div></div>`;
+        // 有下级的块:大类名+占比压成顶部一条标题带,块内剩余空间直接铺成分热力。
+        // 原来要 hover 才看得见,且浮层会盖住块名——现在两样同时在,不用悬停也知道这是「美股」还是「A股宽基」。
+        if(!slim && it.node.children && it.node.children.length){
+          inner = `<span class="heat-tag">${esc(it.name)}<i>${share.toFixed(1)}% · ${wan(it.value)}</i></span>`;
+          el.dataset.inlineHeat = '1';
+        }
       }
       el.innerHTML = inner;
       const p0 = heatMode ? hp0 : chgNode(it.node);
@@ -1075,21 +1144,27 @@ safe('大类配置色块', function(){
         // 叶子:点击联动右侧走势(有序列才挂)
         if((PD.trends||{})['hold:'+it.name]){
           el.style.cursor = 'pointer';
-          el.addEventListener('click', ()=>window._showTrend && window._showTrend('hold:'+it.name, it.name));
+          el.addEventListener('click', ()=>{
+            window._showTrend && window._showTrend('hold:'+it.name, it.name);
+            window._syncSunburstTo && window._syncSunburstTo(it.name);
+          });
         }
       } else {
         el.style.cursor = 'pointer';
-        el.addEventListener('mouseenter', ()=>showHeat(el, it));
+        el.addEventListener('mouseenter', ()=>{ if(el.dataset.heatPainted!=='1') showHeat(el, it); });
         el.addEventListener('mouseleave', hideHeat);
         el.addEventListener('click', ()=>{
           // 点击瞬间捕获当前 heatmap 瓦片矩形,供 FLIP 变形用
-          const tiles = heatEl ? Array.from(heatEl.querySelectorAll('.hm-tile')).map(t=>({
+          const src = (el.dataset.heatPainted === '1' ? el : heatEl);   // 常驻瓦片优先,其次 hover 浮层
+          const tiles = src ? Array.from(src.querySelectorAll('.hm-tile')).map(t=>({
             name: t.dataset.name, rect: t.getBoundingClientRect() })) : null;
           path.push(it);
           update(tiles);
+          window._syncSunburstTo && window._syncSunburstTo(it.name);   // 带动旭日图
         });
       }
       mosaic.appendChild(el);
+      el._it = it;
       cellEls.push(el);
     });
     const shares = items.map(x=>Math.max(x.value/total*100, 0.4));
@@ -1139,6 +1214,37 @@ safe('大类配置色块', function(){
         }));
       });
     }
+    paintInlineHeat(cellEls, shares);
+  }
+
+  // 常驻内嵌热力:等 flex 撑开、拿到真实宽高后再铺瓦片。
+  // 太窄的块(如港股 7%)铺不下,保持纯色块 + 原来的 hover 浮层兜底。
+  const HEAT_MIN_W = 118, HEAT_MIN_H = 96;
+  function paintInlineHeat(cellEls, shares){
+    // 尺寸**算出来**而不是量出来:.cell 有 transition:flex-grow .45s,过渡期间量到的是中间值。
+    // 等过渡结束再量会先露出块底色(蓝)再盖上热力,视觉上是"先蓝后热力"两段;
+    // 按 flex 份额解析出终态宽度就能在展开的第一帧直接铺好热力,整条一次扩散到位。
+    const gap = 3, n = cellEls.length;
+    const sum = (shares||[]).reduce((a,b)=>a+b, 0) || 1;
+    const avail = Math.max(0, mosaic.clientWidth - gap*(n-1));
+    const paint = ()=>{
+      cellEls.forEach((el,i)=>{
+        if(el.dataset.inlineHeat !== '1' || !el._it) return;
+        const W = shares ? avail*shares[i]/sum : el.clientWidth;
+        const H = mosaic.clientHeight;
+        if(W < HEAT_MIN_W || H < HEAT_MIN_H) return;       // 放不下 → 退回 hover 浮层
+        const kids = childItems(el._it);
+        if(!kids.length) return;
+        const host = document.createElement('div');
+        host.className = 'hm inline';
+        // 瓦片用百分比定位 → 层随块走,W/H 只用于 squarify 判断行宽比,差几个 px 不影响布局决策
+        host.innerHTML = tilesHtml(kids, W, H);            // 铺满整块,大类名改用浮在上层的角标
+        el.appendChild(host);
+        el.style.background = 'var(--ink)';                 // 见 .hm.inline 注释:防边缘漏出块底色
+        el.dataset.heatPainted = '1';                       // 已铺 → hover 不再弹浮层
+      });
+    };
+    requestAnimationFrame(paint);                           // 不再等过渡:尺寸是算出来的
   }
   function update(morphFrom){
     const level = path.length;
@@ -1146,7 +1252,49 @@ safe('大类配置色块', function(){
     pathEl.textContent = level ? '全部 › '+path.map(p=>p.name).join(' › ') : '';
     render(level ? childItems(path[level-1]) : rootItems(), level, morphFrom);
   }
-  backBtn.addEventListener('click', ()=>{ if(path.length){ path.pop(); update(); } });
+  backBtn.addEventListener('click', ()=>{
+    if(!path.length) return;
+    path.pop(); update();
+    path.length ? window._syncSunburstTo && window._syncSunburstTo(path[path.length-1].name)
+                : window._syncSunburstReset && window._syncSunburstReset();
+  });
+
+  // 供旭日图反向调用:按名字在 mosaic 里下钻到同一节点。
+  // 层级差一层(mosaic 无「金融资产」根),所以靠名字逐层找而不是靠层数;
+  // 找不到就静默不动——两边树形不完全一致时不该报错、也不该乱跳。
+  // 程序化下钻不传 morphFrom → 跳过 FLIP 变形动画(拿不到点击瞬间的瓦片矩形,硬做会闪)。
+  // 选中标记:旭日图点到的那一项在 mosaic 里用同款高亮环标出来(瓦片是过渡后才铺的,取不到就晚点再试)
+  function markInMosaic(nm){
+    const apply = ()=>{
+      mosaic.querySelectorAll('.hl').forEach(e=>e.classList.remove('hl'));
+      const cell = Array.from(mosaic.querySelectorAll('.cell')).find(c=>c._it && c._it.name===nm);
+      if (cell){ cell.classList.add('hl'); return true; }
+      const tile = Array.from(mosaic.querySelectorAll('.hm-tile')).find(t=>t.dataset.name===nm);
+      if (tile){ tile.classList.add('hl'); return true; }
+      return false;
+    };
+    if (!apply()) setTimeout(apply, 560);
+  }
+  window._syncMosaicTo = nm => {
+    if (path.length && path[path.length-1].name === nm) return true;   // 已在该节点
+    const walk = (items, stack) => {
+      for (const it of items){
+        if (it.name === nm){
+          // 叶子没有下一层:钻进去会渲染空列表、整条变成墨色底。停在它所在的兄弟层并高亮它。
+          const leaf = !(it.node && it.node.children && it.node.children.length);
+          path = leaf ? stack : stack.concat([it]);
+          update(); markInMosaic(nm);
+          return true;
+        }
+        if (it.node && it.node.children && it.node.children.length
+            && walk(childItems(it), stack.concat([it]))) return true;
+      }
+      return false;
+    };
+    if (walk(rootItems(), [])) return true;
+    if (path.length){ path = []; update(); }        // 名字不在 mosaic 树里(如「金融资产」根)→ 回顶层
+    return false;
+  };
   update();
 });
 
@@ -1361,6 +1509,21 @@ safe('财务自由进度', function(){
       但育儿在结束前仍要供 → 单列为「育儿储备」${wan(f.reserve)},已加进真·自由线。<b>2029 年摸到 Coast 线不等于能退休。</b></div>`;
   }
   html += `<div class="note">区间来自「猜测」类事件(兴趣班 8k~12k)· 实际回报=已扣通胀 · 是导航不是承诺</div>`;
+  // FI 分母漏项:「终身月支出」只含月度收支里标「终身」的项 + 订阅 + 保险,
+  // 日常生活开销(吃饭/超市/医疗/充电)一分没算进去 → 上面的线偏低、进度偏乐观。
+  // 攒满 spend_history.MIN_MONTHS 个已对账月前只标注不改数(单月样本改 FI 线太草率)。
+  const G = D.fiGap;
+  if (G && !G.applied){
+    const one = G.basis === 'single';
+    html += `<div class="note" style="border-color:var(--red)">
+      ⚠ <b>上面的线未含日常生活开销</b>（约 <b>${wan(G.dailyMonth)}/月</b>${one?'，仅 1 个对账月的实测值':`，近 ${D.spend.minMonths} 月中位数`}）。
+      终身月支出 ¥${G.curMonth.toLocaleString()} → <b>¥${G.newMonth.toLocaleString()}</b> 后：
+      Coast 线 ${wan(G.curCoast)} → <b>${wan(G.newCoast)}</b>（进度 ${(G.curProgress*100).toFixed(1)}% → <b>${(G.newProgress*100).toFixed(1)}%</b>）·
+      真·自由线 ${wan(G.curFree)} → <b>${wan(G.newFree)}</b>（进度 ${(G.curFreeProgress*100).toFixed(1)}% → <b>${(G.newFreeProgress*100).toFixed(1)}%</b>）。
+      ${one?`满 ${D.spend.minMonths} 个对账月后按滚动中位数正式并入分母，在此之前只标注、不改数。`
+           :'下次渲染即按中位数并入分母。'}
+      口径用<b>全额</b>不按刚性打折——「弹性」是可压缩不是退休后归零。</div>`;
+  }
   el.innerHTML = html;
 });
 
@@ -1374,9 +1537,21 @@ safe('再平衡执行单', function(){
   (R.rows||[]).forEach(r=>{
     const badge = r.act ? `<span class="badge ${r.adjustable?'y':''}" style="transform:none">${r.adjustable?'行动':'超限'}</span>` : '';
     const tagTxt = r.adjustable ? '' : (r.cls==='现金' ? ' <span class="sub">弹药池</span>' : ' <span class="sub">不可调</span>');
+    // 百分比不可执行,金额才可执行:「黄金 −2.2pp」不知道该买多少,「还差 ¥19.0万」可以直接下单。
+    // gap 数据一直都在(metrics 早算好了),只是以前没显示出来。
+    const g = r.gap || 0;
+    const gapTxt = !r.adjustable || Math.abs(g) < 1000 ? ''
+      : `<div class="tg" style="font-size:11px;font-weight:800;opacity:.7">${g>0?'还需买入':'需转出'} ${wan(Math.abs(g))}</div>`;
     html += `<div class="kv"><span class="rowl"><span class="txt">${esc(r.cls)}${tagTxt}</span>${badge}</span>
-      <span class="v" style="${r.act?'color:var(--red)':''}">${(r.curPct*100).toFixed(1)}% → ${(r.tgtPct*100).toFixed(0)}% <span class="sub">${pp(r.devPp)}pp</span></span></div>`;
+      <span class="v" style="${r.act?'color:var(--red)':''}">${(r.curPct*100).toFixed(1)}% → ${(r.tgtPct*100).toFixed(0)}% <span class="sub">${pp(r.devPp)}pp</span>${gapTxt}</span></div>`;
   });
+  // 缺口总量:一句话回答「全部补齐要多少钱」,并跟当前定投速度对上
+  const need = (R.rows||[]).filter(r=>r.adjustable && (r.gap||0) > 0).reduce((s,r)=>s+r.gap, 0);
+  if (need > 0){
+    const mth = (D.dca||{}).month || 0;
+    html += `<div class="kv"><span class="txt" style="font-weight:900">补齐低配缺口合计</span>
+      <span class="v">${wan(need)}${mth?` <span class="sub">≈ ${(need/mth).toFixed(1)} 个月定投</span>`:''}</span></div>`;
+  }
   if (R.plan){
     const lines = Object.entries(R.plan.alloc||{}).map(([c,v])=>`${esc(c)} ¥${v.toLocaleString()}`).join(' · ');
     // 台账里至今没有任何一笔定投买入 → 这是「计划」,不是「正在发生的事」。
@@ -1401,58 +1576,162 @@ safe('再平衡执行单', function(){
   el.innerHTML = html;
 });
 
+/* 支出构成:「其他实际支出」的切分(品类=事实,刚性=可改的判断,渠道=账单导全了没)。
+   导漏账单只让「未归类」变大,总量层不受影响——所以这块是自愿的、增量的。
+   趋势/偏离归因要 ≥3 个已对账月才有意义,不够就不渲染,不在面板上挂单点折线。 */
+safe('支出构成', function(){
+  const S = D.spend; if (!S || !S.month || !(S.categories||[]).length) return;
+  const blk = document.getElementById('spend-blk'), el = document.getElementById('spend');
+  if (!blk || !el) return;
+  blk.style.display = '';
+  // 这块的金额都是几百~几千,走 wan() 会显示成「0.3万」等于没信息;演示脱敏照样要遮
+  const yuan = v => window._privacy ? '¥***' : '¥' + Math.round(v).toLocaleString();
+  // 绿=可压缩(弹性,有腾挪空间) · 红=砍不掉(刚性) —— 颜色读的是「余地」不是「好坏」
+  const RCOL = {'刚性':'var(--red)', '半弹性':'var(--c-gold)', '弹性':'var(--c-bond)', '未归类':'#8a8172'};
+  const RTXT = {'刚性':'#fff', '半弹性':'var(--ink)', '弹性':'#fff', '未归类':'#fff'};
+  const cats = S.categories, tot = cats.reduce((s,c)=>s+c.金额, 0) || 1;
+  document.getElementById('spend-sub').textContent =
+    `${S.month} · ${yuan(tot)} · ${cats.reduce((s,c)=>s+c.笔数,0)} 笔 · 色=刚性程度`;
+
+  // 刚性三档:回答「理论上能砍多少」。只做分析展示,不参与 FI 线计算——
+  // 「弹性」是可压缩不是退休后归零,拿它调小 FI 分母等于假设退休后不吃饭。
+  const segs = ['刚性','半弹性','弹性','未归类'].filter(k=>S.rigidity[k]);
+  // 文字直接嵌进色段里,右侧不再另起图例;窄段放不下就逐级降级到只剩百分比
+  let html = `<div class="fatrow"><div class="lab"><span>刚性程度</span>
+      <span style="font-weight:700;font-size:11px;opacity:.6">绿=可压缩 · 红=砍不掉</span></div>
+    <div class="fatbar" style="display:flex;height:30px">`
+    + segs.map((k,i)=>{
+        const pc = S.rigidity[k]/tot*100;
+        const label = pc >= 15 ? `${k} ${yuan(S.rigidity[k])} · ${pc.toFixed(0)}%`
+                    : pc >= 7  ? `${k} ${pc.toFixed(0)}%`
+                    : pc >= 3  ? `${pc.toFixed(0)}%` : '';
+        return `<i class="${i===segs.length-1?'full':''}" title="${k} ${yuan(S.rigidity[k])} · ${pc.toFixed(1)}%"
+          style="width:${pc.toFixed(2)}%;background:${RCOL[k]};color:${RTXT[k]};display:flex;
+                 align-items:center;justify-content:center;font-weight:900;font-size:11.5px;
+                 letter-spacing:.02em;white-space:nowrap;overflow:hidden">${label}</i>`;
+      }).join('')
+    + `</div></div>`;
+
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:4px"><div>`
+    + `<div class="sec-h sub-h" style="padding-left:0;padding-right:0">品类 <small>钱买了什么</small></div><div style="margin-top:10px">`
+    + cats.map(c=>{
+        const pc = c.金额/tot*100;
+        return `<div class="fatrow" style="margin-bottom:9px"><div class="lab" style="font-size:12.5px">
+          <span>${esc(c.品类)} <span style="font-weight:700;opacity:.6">${esc(c.刚性)} · ${c.笔数}笔</span></span>
+          <span>${yuan(c.金额)} · ${pc.toFixed(1)}%</span></div>
+          <div class="fatbar" style="height:14px"><i class="full" style="width:${Math.max(pc,0.6).toFixed(1)}%;background:${RCOL[c.刚性]||RCOL['未归类']}"></i></div></div>`;
+      }).join('') + `</div></div><div>`;
+
+  // 渠道:支付工具层。不是给你看构成的,是「这个月账单导全了没」的自检依据。
+  const pay = (S.channels||[]).filter(c=>c.层==='支付工具' && c.金额>0).sort((a,b)=>b.金额-a.金额);
+  if (pay.length){
+    const pt = pay.reduce((s,c)=>s+c.金额,0) || 1;
+    html += `<div class="sec-h sub-h" style="padding-left:0;padding-right:0">出账渠道 <small>钱从哪个口子出去</small></div><div style="margin-top:10px">`
+      + pay.map(c=>`<div class="fatrow" style="margin-bottom:9px"><div class="lab" style="font-size:12.5px">
+          <span>${esc(c.渠道)} <span style="font-weight:700;opacity:.6">${c.笔数}笔</span></span>
+          <span>${yuan(c.金额)} · ${(c.金额/pt*100).toFixed(1)}%</span></div>
+          <div class="fatbar" style="height:14px"><i class="full" style="width:${Math.max(c.金额/pt*100,0.6).toFixed(1)}%;background:var(--c-eq)"></i></div></div>`).join('')
+      + `</div>`;
+  }
+  html += `</div></div>`;   // 关闭 渠道列 + 两列容器
+  if ((S.coverageGap||[]).length)
+    html += `<div class="note" style="border-color:var(--red)">⚠ <b>${esc(S.coverageGap.join('、'))}</b> 的账单没导——
+      这些渠道的消费没算进来,上面的构成偏低。补导后重新对账即可修正。</div>`;
+
+  // 偏离归因:本月 vs 近 N 月中位数,自动指出「这个月为什么高」,不用人工标一次性。
+  if (S.deviation){
+    const dv = S.deviation, up = dv.偏离 >= 0;
+    html += `<div class="note">本月 <b>${yuan(dv.本月)}</b> 比近 ${dv.样本月数} 月中位数
+      ${up?'高':'低'} <b>${yuan(Math.abs(dv.偏离))}</b>,主要来自:`
+      + dv.贡献.filter(c=>Math.abs(c.偏离)>1).slice(0,3)
+          .map(c=>`${esc(c.品类)} ${c.偏离>=0?'+':'−'}${yuan(Math.abs(c.偏离))}`).join('、')
+      + `</div>`;
+  } else {
+    html += `<div class="note">已对账 <b>${S.months}</b> 个月,满 <b>${S.minMonths}</b> 个月后
+      这里会自动出现「本月 vs 中位数」的偏离归因和品类趋势——用中位数挤掉一次性大额,
+      不需要你每月标注哪笔算一次性。</div>`;
+  }
+  el.innerHTML = html;
+});
+
 /* 现金流月账 */
 safe('现金流月账', function(){
+  const yuan = v => window._privacy ? '¥***' : (v>=0?'+':'−')+'¥'+Math.abs(Math.round(v)).toLocaleString();
   const row = (name, amt, bold) =>
     `<div class="kv"><span class="txt" ${bold?'style="font-weight:900"':''}>${name}</span>
-     <span class="v" style="color:${amt>=0?'var(--c-bond)':'var(--red)'}">${amt>=0?'+':'−'}¥${Math.abs(Math.round(amt)).toLocaleString()}</span></div>`;
-  const sect = (label, first) =>
-    `<div class="sect" style="${first?'':'border-top:2.5px dashed var(--ink);margin-top:12px;'}padding:${first?'0':'8px'} 0 2px;`
-    + `font-weight:900;font-size:11px;letter-spacing:.18em;opacity:.6">${label}</div>`;
-  let html = sect('收入 INCOME', true);
-  const inc = D.incomeItems||[];
-  if (inc.length) {
+     <span class="v" style="color:${amt>=0?'var(--c-bond)':'var(--red)'}">${yuan(amt)}</span></div>`;
+  // 明细折叠:这些数一个月都不变一次(房租/幼儿园/话费…),是义务内容,不该占观赏区的高度。
+  // 摘要行常驻,想看逐项点开——腾出来的空间用于讲「计划 vs 真实」。
+  const fold = (sumLabel, sumAmt, rowsHtml) =>
+    `<details class="cf-d"><summary><div class="kv" style="border-bottom:0">
+       <span class="txt" style="font-weight:900">${sumLabel} <span class="tog"></span></span>
+       <span class="v" style="color:${sumAmt>=0?'var(--c-bond)':'var(--red)'}">${yuan(sumAmt)}</span></div></summary>
+     <div class="cf-detail">${rowsHtml}</div></details>`;
+
+  // ── 收入明细(折叠) ──
+  let incRows = '', inc = D.incomeItems||[];
+  if (inc.length){
     const groups = {};
     inc.forEach(i=>{ (groups[i.成员||'未分组'] = groups[i.成员||'未分组']||[]).push(i); });
     const multi = Object.keys(groups).length > 1;
-    for (const [m,items] of Object.entries(groups)) {
+    for (const [m,items] of Object.entries(groups)){
       items.forEach(i=>{
         let label = multi ? `${esc(m)}·${esc(i.项目)}` : esc(i.项目);
         const det = i.扣缴明细 || {};
         if (det.五险一金) label += ` <span class="sub">(五险一金¥${det.五险一金.toLocaleString()} 个税¥${(det.个税||0).toLocaleString()})</span>`;
-        html += row(label, i.金额);
+        incRows += row(label, i.金额);
       });
-      if (multi) html += row(`${esc(m)} 小计`, items.reduce((s,x)=>s+x.金额,0), true);
+      if (multi) incRows += row(`${esc(m)} 小计`, items.reduce((s,x)=>s+x.金额,0), true);
     }
-    html += row('当月实发合计', D.income, true);
-  } else html += row('当月实发(估)', D.income);
-  html += sect('固定支出 FIXED OUT');
-  (D.flowItems||[]).forEach(i=>{ html += row(esc(i.项目), i.金额); });
-  if ((D.subsMonthly||0) > 0) html += row('订阅(月折算)', -D.subsMonthly);
-  if ((D.insMonthly||0) > 0) html += row('保险保费(摊月)', -D.insMonthly);
-  html += row('固定支出合计', -D.fixedOut, true);
-  html += sect('结余与定投 NET');
-  html += row('月净现金流', D.netCashflow, true);
-  const dca = D.dca||{};
+  }
+  let html = incRows ? fold('当月实发', D.income, incRows) : row('当月实发(估)', D.income, true);
+
+  // ── 固定支出明细(折叠) ──
+  let fixRows = '';
+  (D.flowItems||[]).forEach(i=>{ fixRows += row(esc(i.项目), i.金额); });
+  if ((D.subsMonthly||0) > 0) fixRows += row('订阅(月折算)', -D.subsMonthly);
+  if ((D.insMonthly||0) > 0) fixRows += row('保险保费(摊月)', -D.insMonthly);
+  html += fold('固定支出', -D.fixedOut, fixRows);
+
+  // ── 计划 vs 真实 ──
+  const done = (D.cashflowHistory||[]).filter(r=>r.已对账==='是');
+  const R = done.length ? done[done.length-1] : null;
+  const planRate = D.income ? D.netCashflow/D.income : 0, dca = D.dca||{};
+  const pct = v => (v*100).toFixed(1)+'%';
+  const cell = (v,cls) => `<div style="text-align:right;${cls||''}">${v}</div>`;
+  if (R){
+    const dNet = R.净结余 - D.netCashflow, dRate = R.储蓄率 - planRate;
+    const dInc = R.税后收入 - D.income;
+    const hd = 'font-weight:900;font-size:11px;letter-spacing:.12em;opacity:.6';
+    html += `<div class="cf-cmp">
+      <div></div>
+      ${cell('计划口径', hd)}
+      ${cell('真实 '+esc(R.月份), hd)}
+      ${cell('差', hd)}
+      <div>净结余</div>${cell('<b>'+yuan(D.netCashflow)+'</b>')}${cell('<b>'+yuan(R.净结余)+'</b>')}
+      ${cell(`<span style="color:${dNet>=0?'var(--c-bond)':'var(--red)'}">${yuan(dNet)}</span>`)}
+      <div>储蓄率</div>${cell('<b>'+pct(planRate)+'</b>')}${cell('<b>'+pct(R.储蓄率)+'</b>')}
+      ${cell(`<span style="color:${dRate>=0?'var(--c-bond)':'var(--red)'}">${(dRate*100>=0?'+':'')+(dRate*100).toFixed(1)}pp</span>`)}
+      <div>定投</div>${cell('¥'+(dca.month||0).toLocaleString()+'/月')}${cell('¥'+R.定投额.toLocaleString()+'/月')}${cell('—')}
+    </div>`;
+    // 两个大误差对冲出来的巧合,不是准——奖金停了计划数立刻偏乐观,这一句才是这块的价值
+    html += `<div class="note" style="border-color:var(--red)">
+      ⚠ 计划口径<b>漏了日常开销 ${yuan(-R.其他实际支出)}</b>,但实际收入又比模型<b>高 ${yuan(dInc)}</b>(奖金)——
+      两笔大误差正好抵消,净结余只差 ${yuan(dNet)}。<b>这不是准,是巧</b>:奖金停了计划数就会明显偏乐观。</div>`;
+  } else {
+    html += `<div class="kv"><span class="txt" style="font-weight:900">月净现金流</span>
+      <span class="v" style="color:var(--c-bond)">${yuan(D.netCashflow)}</span></div>`;
+    const TS = D.trueSavings;
+    if (TS && TS.insufficient)
+      html += `<div class="note" style="border-color:var(--red)">⚠ 净结余是<b>计划口径</b>(只含已知固定项,
+        <b>日常开销从未记录</b>)——它是储蓄率的<b>上限</b>。对账一个月后这里会显示「计划 vs 真实」。</div>`;
+  }
   if ((dca.month||0) <= 0)
     html += `<div class="kv"><span>定投计划</span><span class="v" style="color:var(--red)">结余≤0 暂停</span></div>`;
-  else {
+  else if (!R){
     const tgt = Object.keys(dca.targets||{}).join('、') || '沪深300ETF';
-    const pct = dca.mode==='按结余比例' ? `结余×${((dca.ratio||0)*100).toFixed(0)}%` : '固定月额';
-    html += `<div class="kv"><span class="txt">定投(${pct})</span><span class="v" style="color:var(--c-bond)">¥${dca.month.toLocaleString()}/月·${esc(dca.freq||'每周')}¥${(dca.per||0).toLocaleString()}→${esc(tgt)}</span></div>`;
-  }
-  // 口径诚实性:净结余是「计划数」——月度收支只含已知固定项,生活开销从未记录。
-  // 真实储蓄要靠总量层倒推(Δ账户余额 − 投资收益),数据够了才显示(见 docs/2029-plan.md 2.2)
-  const TS = D.trueSavings;
-  if (TS && TS.insufficient){
-    html += `<div class="note" style="border-color:var(--red)">
-      ⚠ 上面的净结余是<b>计划口径</b>(月度收支只含已知固定项,<b>日常生活开销从未记录</b>)——它是储蓄率的<b>上限</b>。<br>
-      真实储蓄 = Δ账户余额 − 投资收益,需 ${TS.needDays} 天净值历史才能算(现有 ${TS.days} 天)。到那时这里会显示实测值。</div>`;
-  } else if (TS){
-    const diff = TS.unrecorded;
-    html += `<div class="note" style="border-color:${Math.abs(diff)>5000?'var(--red)':'var(--ink)'}">
-      <b>真实储蓄(实测)</b> ¥${TS.realMonthly.toLocaleString()}/月 · 期间合计 ¥${TS.real.toLocaleString()}(已扣投资收益 ¥${TS.investPnl.toLocaleString()})<br>
-      计划口径 ¥${TS.planned.toLocaleString()} → ${diff>0?`<b>未记录的生活开销约 ¥${diff.toLocaleString()}</b>`:`实际比计划多存 ¥${Math.abs(diff).toLocaleString()}`}</div>`;
+    const p2 = dca.mode==='按结余比例' ? `结余×${((dca.ratio||0)*100).toFixed(0)}%` : '固定月额';
+    html += `<div class="kv"><span class="txt">定投(${p2})</span><span class="v" style="color:var(--c-bond)">¥${dca.month.toLocaleString()}/月·${esc(dca.freq||'每周')}¥${(dca.per||0).toLocaleString()}→${esc(tgt)}</span></div>`;
   }
   html += `<div class="note">被动收入≈<b>¥${(D.passiveMonth||0).toLocaleString()}/月</b> 覆盖固定支出 ${((D.coverage||0)*100).toFixed(0)}%<br>应急可支撑 ${(D.runway||0).toFixed(0)} 个月 · 投资房若出租≈+¥${(D.hypoRent||0).toLocaleString()}/月</div>`;
   document.getElementById('cashflow').innerHTML = html;
@@ -1652,6 +1931,19 @@ safe('流动性瀑布', function(){
       <span class="v">${(v/1e4).toFixed(0)}万 <span class="sub">累计撑${(cum/fo).toFixed(0)}月</span></span></div>`;
   });
   html += `<div class="note">自上而下动用:先流动性后收益性 · ③ 不卖出增额寿即可放款 <b>${((D.policyLoan||0)/1e4).toFixed(0)}万</b>,适合中短期周转</div>`;
+  // 上面的「撑几个月」是按当前市值算的。真出事的时候资产本身也在缩水——
+  // 把压力测试最惨的情景接进来,回答「最差情况下这套顺序还撑得住吗」。
+  // 只打掉权益部分(房产本来就在最后一档、且不因估值下跌而变得更难卖),现金/保单不受股价影响。
+  const worst = (D.stress||[]).slice().sort((a,b)=>a.dNW-b.dNW)[0];
+  if (worst){
+    const eqLiquid = lq['数日']||0;                    // 数日档基本就是权益+理财
+    const shock = Math.max(0, Math.min(1, -(worst.ddPct||0)));
+    const softTotal = (lq['即时']||0) + eqLiquid*(1-shock) + (D.policyLoan||0);
+    html += `<div class="note" style="border-color:var(--red)">
+      最差情景「<b>${esc(worst.name)}</b>」净资产 ${wan(worst.dNW)}(${(worst.ddPct*100).toFixed(1)}%)后:
+      前三档缩到约 <b>${wan(softTotal)}</b>,仍可支撑 <b>${(softTotal/fo).toFixed(0)} 个月</b> 固定支出,
+      不必动 ④ 锁定档。<span class="sub">粗估:按整体回撤幅度打折权益类,现金/保单贷款不受股价影响</span></div>`;
+  }
   el.innerHTML = html;
 });
 
@@ -1882,18 +2174,43 @@ safe('旭日图', ()=>{
   });
   chart.on('mouseover',p=>{ if(p.data && p.value!=null) setLbl(p.name,p.value); });
   chart.on('mouseout',resetLbl);
-  chart.on('click',p=>{
-    const nm = p.name, nd = p.data;
-    if (nd && nd.children && nd.children.length){
-      // 按完整祖先链重建栈:无论逐级下钻还是从顶层直点深层,中心都能逐级上钻
-      const path = pathTo(nm) || [];
+  // 按名下钻(点击与外部联动共用):找到该节点的完整祖先链 → 重建栈 → 渲染 → 联动走势。
+  // fromSync=true 表示这次是 mosaic 带过来的,不再回头通知 mosaic,避免两边互相触发死循环。
+  function drillTo(nm, fromSync){
+    const path = pathTo(nm);
+    if (!path) return false;
+    const nd = path[path.length-1];
+    if (nd.children && nd.children.length){
       _stack.length = 0;
       _stack.push({name:rootName(), val:total, arr:rootArr()});
       for(let i=0;i<path.length-1;i++) _stack.push({name:path[i].name, val:nv(path[i]), arr:path[i].children});
-      curRoot={name:nm,val:p.value}; curArr=nd.children; resetLbl(); renderAt(nd.children);
+      curRoot={name:nm, val:nv(nd)}; curArr=nd.children; resetLbl(); renderAt(nd.children);
     }
     showTrendFor(nm);
-  });
+    if (!fromSync) window._syncMosaicTo && window._syncMosaicTo(nm);
+    return true;
+  }
+  chart.on('click',p=>{ drillTo(p.name); });
+  // 供 mosaic 调用:房产在「仅金融」模式下没有扇区 → 先自动切到「全部资产」再下钻,
+  // 并给切换按钮一个短暂高亮,否则旭日图会莫名其妙变样。
+  window._sunburstDrillTo = nm => drillTo(nm);      // 用户点击那条路径(会回头通知 mosaic)
+  window._syncSunburstTo = nm => {
+    // 房产在「仅金融」模式下不在环里(finData 已剔除)。不能用 !pathTo(nm) 判断——
+    // pathTo 搜的是完整树,房产永远找得到,条件恒假;要看它的**顶层祖先**是不是房产。
+    const anc = pathTo(nm);
+    if (assetMode === 'fin' && anc && anc[0].name === '房产') {
+      applyMode('all');                       // 函数声明提升,定义在下面也能调
+      const allBtn = document.querySelector('#asset-seg [data-m="all"]');
+      if (allBtn && allBtn.animate)           // 短暂高亮:否则范围被悄悄切了会莫名其妙
+        allBtn.animate([{outline:'3px solid var(--c-gold)', outlineOffset:'2px'},
+                        {outline:'3px solid transparent', outlineOffset:'2px'}],
+                       {duration:1000, easing:'ease-out'});
+    }
+    return drillTo(nm, true);
+  };
+  window._syncSunburstReset = () => { if (_stack.length) { _stack.length = 0;
+    curRoot={name:rootName(), val:total}; curArr=rootArr(); resetLbl(); renderAt(curArr);
+    window._showTotal && window._showTotal(); } };
   // 资产范围切换:仅金融(默认)↔ 全部资产;房产摘要条随之显隐
   function updateStrip(){
     const ps = document.getElementById('prop-strip');
@@ -1913,6 +2230,16 @@ safe('旭日图', ()=>{
   document.querySelectorAll('#asset-seg button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.m)));
   updateStrip();
 });
+
+/* 打印/存 PDF 时把折叠块全部摊开(details 折叠在纸上会丢内容),打完恢复原状 */
+(function(){
+  let restore = [];
+  addEventListener('beforeprint', ()=>{
+    restore = [...document.querySelectorAll('details')].filter(d=>!d.open);
+    restore.forEach(d=>d.open = true);
+  });
+  addEventListener('afterprint', ()=>{ restore.forEach(d=>d.open = false); restore = []; });
+})();
 
 /* 现金流月度走势 */
 safe('现金流月度走势', ()=>{

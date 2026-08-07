@@ -23,7 +23,11 @@ PY="$(command -v python3)"
     && echo "☁️ db 已备份到 iCloud ($(ls "$BK" | wc -l | tr -d ' ') 份)"
   ls -t "$BK"/panorama-*.db 2>/dev/null | tail -n +31 | while read -r f; do rm -f "$f"; done
 
-  # 代码保底快照:有未提交改动则自动提交(post-commit hook 会顺带推送到私有仓库)
+  # 代码保底快照:有未提交改动则 git add -A 全量提交,post-commit hook 顺带推送。
+  # ⚠️ origin 是**公开仓库** github.com/Neytoph/asset-panorama —— 不是私有仓库。
+  # git add -A 会把任何未被 .gitignore 覆盖的新文件一并推上去:
+  # 写含真实金额/商户/人名/医疗信息的文档,**先加 .gitignore 再落盘**。
+  # (已踩两次:docs/2029-plan、docs/monthly-review-2026-07)
   if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     git add -A && git commit -q -m "auto: $(date '+%Y-%m-%d') 代码快照" \
       && echo "📦 未提交改动已自动快照提交"

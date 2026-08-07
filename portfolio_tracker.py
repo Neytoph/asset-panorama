@@ -529,8 +529,13 @@ def persist(R):
     debt = -sum(a["value"] for a in R["accounts"] if a["class"] == "负债")
     rows = [r for r in read_csv("history_full.csv", []) if r.get("date") != today]
 
-    def _add(typ, name, val):
-        rows.append({"date": today, "类型": typ, "名称": name, "金额": round(val)})
+    # 「数量」只对持仓行有意义:快照必须把**当时用的份数**一起记下来。
+    # 不记的话事后无法区分「市值涨了」和「数量变了」——补记的交易(交易日 < 录入日)
+    # 会让市值台阶落在录入日,而台账数量按交易日算,两边永远对不上,
+    # 当日涨跌就会把加仓当成暴涨(2026-08-07 SpaceX 显示 +112% 即此)。
+    def _add(typ, name, val, qty=""):
+        rows.append({"date": today, "类型": typ, "名称": name,
+                     "金额": round(val), "数量": ("" if qty in (None, "") else f"{qty:g}")})
     _add("汇总", "总净资产", networth)
     _add("汇总", "金融资产", financial)
     _add("汇总", "总负债", debt)
@@ -540,8 +545,8 @@ def persist(R):
     for a in R["accounts"]:
         _add("账户", a["name"], a["value"])
     for h in R["holdings"]:
-        _add("持仓", h["name"], h["value"])
-    storage.save_table("history_full", ["date", "类型", "名称", "金额"], rows)
+        _add("持仓", h["name"], h["value"], h.get("qty"))
+    storage.save_table("history_full", ["date", "类型", "名称", "金额", "数量"], rows)
 
     # 降级日台账(独立文档，不污染 history 数值表)：供「自动自愈」回补历史行情。
     # 只登记「有 history 行、但行情/汇率走了兜底」的天；这天健康则清除旧登记。
@@ -713,7 +718,7 @@ def self_heal(lookback_days=HEAL_LOOKBACK_DAYS, dry_run=False, log=print):
 
     cols = ["date", "总净资产", "金融资产", "房产", "权益", "债券类固收", "现金", "黄金"]
     storage.save_table("history", cols, [hist_main[d] for d in sorted(hist_main)])
-    storage.save_table("history_full", ["date", "类型", "名称", "金额"], hf_rows)
+    storage.save_table("history_full", ["date", "类型", "名称", "金额", "数量"], hf_rows)
     # 更新降级台账：修好的清掉，未完全修好的留待下轮
     for D in healed:
         dd.pop(D, None)

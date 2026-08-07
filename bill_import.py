@@ -59,12 +59,25 @@ def _norm_date(s):
 
 
 def _find_header(lines):
-    """返回 (表头行号, 列名列表)；找不到返回 (None, None)。"""
+    """返回 (表头行号, 列名列表)；找不到返回 (None, None)。
+
+    判据是「按单元格命中」而不是「整行含关键词」——支付宝导出的前导说明里有一句
+    「…不计入为收入或者支出，记为不计收支类」，整行匹配会把它误当表头。
+    真表头的特征：逗号切开后字段够多(≥4)，且有 ≥2 个**短字段**正好是关键列名。
+    """
     for i, ln in enumerate(lines[:40]):        # 前导说明一般在 20 行内
-        hits = sum(1 for k in _HEADER_KEYS if k in ln)
+        if not any(k in ln for k in _HEADER_KEYS):
+            continue
+        try:
+            cols = [c.strip().strip('"') for c in next(csv.reader([ln]))]
+        except (csv.Error, StopIteration):
+            continue
+        if len(cols) < 4:                      # 说明文字是整段一行，切不出列
+            continue
+        hits = sum(1 for c in cols if c and len(c) <= 12
+                   and any(k == c or k in c for k in _HEADER_KEYS))
         if hits >= 2:
-            cols = next(csv.reader([ln]))
-            return i, [c.strip().strip('"') for c in cols]
+            return i, cols
     return None, None
 
 
@@ -165,6 +178,106 @@ def parse_bill(raw: bytes):
     if not rows:
         warnings.append("没有解析到支出行（确认导出的是含支出的流水，且方向/金额列正常）")
     return {"source": source, "rows": rows, "warnings": warnings}
+
+
+# ── 支出品类 ──────────────────────────────────────────────────────────
+# 设计：**品类是事实**（这笔钱买了什么，不会变）→ 存进数据，只能合并不能拆分，所以切得比展示更细；
+#       **刚性是判断**（算不算刚需，会变）→ 放 RIGIDITY 映射，改了历史自动重算，不用重导账单。
+# 刚性等级**只用于分析展示**，不参与 FI 线计算——"弹性"是可压缩，不是退休后归零，
+# 拿它去调小 FI 分母等于假设退休后不吃饭（见 docs/monthly-review-2026-07.md）。
+CATEGORIES = [
+    ("餐饮·外食", ["餐饮", "烧烤", "湘菜", "面包", "咖啡", "甜品", "肯德基", "KFC", "麦当劳",
+                 "星巴克", "瑞幸", "车仔面", "多乐", "潇湘", "布歌", "蛋糕", "海鲜", "干锅",
+                 "龙虾", "梨汤", "港季", "餐厅", "飞鸟", "知味坊", "八合里", "水裹", "滨河湾",
+                 "森屿", "法式", "皮爷", "Peet", "满记", "四眼仔", "夹星堂", "美团", "外卖",
+                 "宝庆荟", "小馆", "食堂", "火锅", "烤肉", "奶茶", "酒馆"]),
+    ("餐饮·食材", ["超市", "七鲜", "广缘", "幸福", "菜市", "生鲜", "盒马", "永辉"]),
+    ("医疗健康", ["医院", "药房", "药店", "诊所", "口腔", "体检", "疫苗", "医疗"]),
+    ("水电燃气", ["国家电网", "电费", "燃气", "水务", "自来水", "供暖", "万物云", "物业"]),
+    # 停车通常已在固定支出里(月租车位),对账时被重叠规则挡掉、到不了这里;
+    # 但分类器本身要认得——否则换个停车不固定的月份就整片掉进「未归类」。
+    ("交通·充电", ["友电", "充电", "服务区", "哈啰", "骑安", "加油", "地铁", "打车", "滴滴",
+                 "高速", "ETC", "火车", "航空", "机票", "停车", "顺易通", "车位", "泊车"]),
+    ("家居·维修", ["维修", "开锁", "换锁", "甲醛", "检大师", "插座", "家装", "家居", "保洁",
+                 "搬家", "五金", "装修"]),
+    ("数码·设备", ["办公机具", "数码", "电子", "电脑", "手机", "耳机", "录音笔", "显示器"]),
+    ("娱乐·游戏", ["蒸汽", "Steam", "BUFF", "PAYPAL", "THANGS", "印鸽", "游戏", "点卡", "会员"]),
+    ("娱乐·出游", ["门票", "度假", "景区", "渔田", "购物中心", "出游", "酒店", "民宿", "乐园"]),
+    ("日用百货", ["日用", "百货", "京东", "淘宝", "天猫", "拼多多", "洗护", "纸巾"]),
+    ("教育·学习", ["教育", "培训", "学费", "课程", "书店", "图书"]),
+    ("人情往来", ["红包", "礼金", "随礼", "份子"]),
+    ("金融·手续费", ["手续费", "安全保障", "增值服务", "年费", "工本费"]),
+]
+# 品类 → 刚性等级。可被 storage 里的 spend_rigidity 文档整体覆盖。
+DEFAULT_RIGIDITY = {
+    "餐饮·外食": "弹性", "餐饮·食材": "刚性", "医疗健康": "刚性", "水电燃气": "刚性",
+    "交通·充电": "半弹性", "家居·维修": "半弹性", "数码·设备": "弹性",
+    "娱乐·游戏": "弹性", "娱乐·出游": "弹性", "日用百货": "刚性",
+    "教育·学习": "刚性", "人情往来": "弹性", "金融·手续费": "刚性", "未归类": "未归类",
+}
+RIGIDITY_ORDER = ("刚性", "半弹性", "弹性", "未归类")
+
+# 支付工具关键词 → 渠道名。渠道分两层：平台层(在哪下的单)和支付工具层(钱从哪出)。
+# 一笔甲醛检测是「京东下单 → 招行储蓄卡扣款」，两层都有——今天所有重复记录都发生在支付工具层，
+# 所以支付工具层是去重和「账单导全了没」自检的依据，平台层只用于看构成。
+PAY_CHANNELS = [
+    ("微信·零钱", ["零钱", "零钱通"]),
+    ("微信·绑卡", ["微信"]),
+    ("支付宝·余额宝", ["余额宝", "花呗"]),
+    ("招行信用卡", ["招商银行信用卡", "掌上生活"]),
+    ("招行储蓄卡", ["招商银行储蓄卡", "招行储蓄"]),
+    ("农行信用卡", ["农业银行信用卡"]),
+    ("建行储蓄卡", ["建设银行"]),
+    ("美团月付", ["美团月付"]),
+    ("京东先享后付", ["先享后付", "白条"]),
+]
+
+
+def categorize(*texts):
+    """商户名/商品说明/交易分类 → 品类。命中不了返回「未归类」。"""
+    blob = " ".join(str(t or "") for t in texts)
+    low = blob.lower()
+    for name, keys in CATEGORIES:
+        if any(k.lower() in low for k in keys):
+            return name
+    return "未归类"
+
+
+def rigidity_map():
+    """刚性映射：默认表 + storage 覆盖（改了历史自动重算，不用重导账单）。"""
+    try:
+        import storage
+        override = storage.load_doc("spend_rigidity", None)
+    except Exception:
+        override = None
+    m = dict(DEFAULT_RIGIDITY)
+    if isinstance(override, dict):
+        m.update({k: v for k, v in override.items() if v in RIGIDITY_ORDER})
+    return m
+
+
+def pay_channel(text):
+    """支付方式串 → 支付工具渠道名；认不出返回「其他」。"""
+    s = str(text or "")
+    for name, keys in PAY_CHANNELS:
+        if any(k in s for k in keys):
+            return name
+    return "其他"
+
+
+def summarize_categories(items):
+    """items: [{amount, category}] → [{品类, 刚性, 金额, 笔数}]，按金额降序。"""
+    rig = rigidity_map()
+    agg = {}
+    for it in items:
+        c = it.get("category") or "未归类"
+        a = agg.setdefault(c, [0.0, 0])
+        a[0] += float(it.get("amount") or 0)
+        a[1] += 1
+    rows = [{"品类": c, "刚性": rig.get(c, "未归类"),
+             "金额": round(v[0], 2), "笔数": v[1]} for c, v in agg.items()]
+    rows.sort(key=lambda r: -r["金额"])
+    return rows
 
 
 def coverage(total_out, classified):

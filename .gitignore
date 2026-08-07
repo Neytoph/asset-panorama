@@ -68,3 +68,6 @@ demo/klines_cache.json
 demo/*.bak.*
 font-preview.html
 theme-preview.html
+
+# 月度对账复盘:含真实金额/商户/人名/医疗信息,禁止进公开仓库
+docs/monthly-review-*.md

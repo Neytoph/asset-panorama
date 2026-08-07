@@ -12,9 +12,10 @@ from pathlib import Path
 import metrics
 import storage
 from portfolio_tracker import (compute, check_alerts, persist, TARGET_NETWORTH,
-                               SINGLE_STOCK_TYPES, load_json, read_csv, http_get)
+                               SINGLE_STOCK_TYPES, load_json, read_csv, http_get, _qty_asof)
 import subscriptions as subs
 import cashflow_income as inc_mod
+import spend_history as spend_hist
 import cashflow_history as cfh
 import insurance as ins
 import loans as loans_mod
@@ -240,6 +241,32 @@ def collect(persist_history=True, fetch_klines=True):
         if cny is not None and cny >= big_th:
             big_trades.append([d, name, act, cny])
     big_trades.sort()
+    # 每持仓「截至某日的台账持有量」——当日涨跌改用数量归一化,而不是按台账日期做 Dietz 修正。
+    #
+    # 为什么必须这么改:补记的交易(交易日 < 录入日)会让**市值台阶落在录入日**,而净投入挂在交易日,
+    # 两边对不上 → Dietz 修正失效 → 加仓被当成暴涨(2026-08-07 SpaceX 显示 +112% 就是这么来的)。
+    # 而补记在这套流程里是常态:美股盘前成交在北京时间深夜,日常估值 19:30 早跑完了。
+    # 归一化 昨值×(今数量/昨数量) 只依赖数量、与交易日期无关,补记多久都不会错;
+    # 顺带也消掉了 Dietz 用成交价、而市值用收盘价带来的残差。
+    # 数量优先取**快照当时记的份数**(history_full.数量),它才是那天算市值用的口径;
+    # 老快照没有这一列时才退回台账推演(_qty_asof)——台账按交易日算,补记的交易会对不上。
+    hf_all = read_csv("history_full.csv", [])
+    qty_dates = sorted({r.get("date") for r in hf_all if r.get("date")})[-8:]
+    snap_qty = {}
+    for r in hf_all:
+        if r.get("类型") != "持仓" or r.get("date") not in set(qty_dates):
+            continue
+        try:
+            snap_qty.setdefault(r.get("名称"), {})[r["date"]] = float(r.get("数量") or "")
+        except ValueError:
+            pass
+    qty_by_date = {}
+    for h in holdings:
+        nm = h["name"]
+        snap = snap_qty.get(nm, {})
+        series = {d: (snap[d] if d in snap else _qty_asof(nm, d, history_rows)) for d in qty_dates}
+        if len(set(series.values())) > 1:      # 数量没变过的持仓不必传,前端取不到就退回 Dietz
+            qty_by_date[nm] = series
     R["warnings"] += [("warn", w) for w in ledger_qty_check(holdings, history_rows)]
     positions = []
     for h in holdings:
@@ -644,6 +671,27 @@ def collect(persist_history=True, fetch_klines=True):
     alerts = (list(check_alerts(R)) + subs.reminders(subs_list, today, fx)
               + ins.reminders(policies, today))
 
+    # ── 支出构成 + 渠道覆盖 + FI 漏项 ──
+    # 「其他实际支出」的切分。导漏了只让「未归类」变大,总量层不受影响,所以可以偷懒。
+    last_recon = next((r["月份"] for r in reversed(cfh.load_history())
+                       if r.get("已对账") == "是"), None)
+    spend = {"month": last_recon, "months": spend_hist.reconciled_months(),
+             "enough": spend_hist.enough_history(), "minMonths": spend_hist.MIN_MONTHS,
+             "categories": [], "rigidity": {}, "channels": [], "coverageGap": [],
+             "deviation": None}
+    if last_recon:
+        spend["categories"] = spend_hist.load_categories(last_recon)
+        spend["rigidity"] = spend_hist.rigidity_split(last_recon)
+        spend["channels"] = spend_hist.load_channels(last_recon)
+        spend["coverageGap"] = spend_hist.coverage_gap(last_recon)
+        spend["deviation"] = spend_hist.deviation(last_recon)
+        # 渠道没导全 → 进告警带(义务内容沉底,不占观赏区)
+        if spend["coverageGap"]:
+            alerts.append(("🟡", "账单渠道未覆盖 " + "、".join(spend["coverageGap"])
+                           + f"（{last_recon}）——该渠道的消费未计入，支出构成偏低"))
+    # FI 分母漏了日常生活开销:先标注不改数,攒满 MIN_MONTHS 个已对账月再正式接入中位数
+    fi_gap = spend_hist.fi_gap(fi.get("lifelongMonth"), fi.get("swr"), fin, fi.get("reserve", 0))
+
     # 降级台账(断网兜底且未回补的天) + 当日降级原因 → 供面板标红/提示，不藏休市只标故障。
     dd_doc = storage.load_doc("degraded_days", {}) or {}
     snap_degraded = (storage.load_doc("latest_snapshot", {}) or {}).get("degraded", [])
@@ -675,7 +723,7 @@ def collect(persist_history=True, fetch_klines=True):
         "positions": positions[:12],
         "pnlTotal": round(pnl_total),
         "perf": perf, "attribution": attrib, "attributionMonthly": attrib_m,
-        "fi": fi, "rebalance": reb,
+        "fi": fi, "fiGap": fi_gap, "spend": spend, "rebalance": reb,
         "stress": stress, "insGap": ins_gap, "policyLoan": round(policy_loan),
         "demo": storage.DEMO,     # 演示模式 → 面板挂「虚构人物」横幅,别被当成真人数据
         "goal": goal, "reloc": reloc, "trueSavings": real_sav,
@@ -709,7 +757,7 @@ def collect(persist_history=True, fetch_klines=True):
         "history": [{"date": h["date"], "总净资产": float(h["总净资产"]),
                      "金融资产": float(h["金融资产"]),
                      "degraded": bool(dd_doc.get(h["date"]))} for h in history],
-        "tradeNet": trade_net, "tradeMarks": trade_marks, "bigTrades": big_trades,
+        "tradeNet": trade_net, "qtyByDate": qty_by_date, "tradeMarks": trade_marks, "bigTrades": big_trades,
         "pxMeta": px_meta,
         "tree": tree_list,
         "aggBook": agg_book,

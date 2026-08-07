@@ -476,6 +476,62 @@ def test_bill_coverage():
     assert over["classified"] == 10000 and over["unclassified"] == 0
 
 
+
+def test_spend_categorize():
+    """品类=事实(存进数据),刚性=判断(放映射可改):同一批明细,改映射不用重导账单。"""
+    import bill_import as bi
+    assert bi.categorize("北京某某综合医院有限公司") == "医疗健康"   # 公开仓库不写真实就诊机构
+    assert bi.categorize("深圳市顺易通信息科技", "停车费用-京-AB73777") == "交通·充电"
+    assert bi.categorize("检大师专业cma甲醛检测上门") == "家居·维修"
+    assert bi.categorize("某某不认识的商户") == "未归类"     # 认不出不瞎归,进未归类
+    rig = bi.rigidity_map()
+    assert rig["医疗健康"] == "刚性" and rig["餐饮·外食"] == "弹性"
+    rows = bi.summarize_categories([
+        {"amount": 100, "category": "医疗健康"},
+        {"amount": 50, "category": "医疗健康"},
+        {"amount": 300, "category": "餐饮·外食"},
+    ])
+    assert rows[0]["品类"] == "餐饮·外食" and rows[0]["金额"] == 300      # 按金额降序
+    med = next(r for r in rows if r["品类"] == "医疗健康")
+    assert med["金额"] == 150 and med["笔数"] == 2 and med["刚性"] == "刚性"
+
+
+def test_spend_pay_channel():
+    """渠道分两层;支付工具层是去重和「账单导全了没」自检的依据。"""
+    import bill_import as bi
+    assert bi.pay_channel("招商银行信用卡(0132)") == "招行信用卡"
+    assert bi.pay_channel("招商银行储蓄卡(7162)") == "招行储蓄卡"
+    assert bi.pay_channel("零钱通") == "微信·零钱"
+    assert bi.pay_channel("美团月付") == "美团月付"
+    assert bi.pay_channel("某不认识的支付方式") == "其他"
+
+
+def test_spend_median_guard():
+    """中位数抗一次性:样本不足返回 None(面板据此不渲染趋势,不画单点折线)。"""
+    import spend_history as sh
+    assert sh._median([]) is None
+    assert sh._median([5, 1, 3]) == 3                       # 奇数取中
+    assert sh._median([1, 3, 5, 100]) == 4                  # 偶数取中间两个均值
+    # 一次性大额被挤掉:均值会被 100 拉到 27.25,中位数只有 4
+    assert sh._median([1, 3, 5, 100]) < sum([1, 3, 5, 100]) / 4
+
+
+def test_spend_fi_gap():
+    """FI 分母漏了日常开销:补进去线要抬高、进度要降,且用全额不按刚性打折。"""
+    import spend_history as sh
+    g = sh.fi_gap.__wrapped__ if hasattr(sh.fi_gap, "__wrapped__") else sh.fi_gap
+    orig = sh.other_median
+    sh.other_median = lambda *a, **k: 10000.0                # 注入日常开销 1 万/月
+    try:
+        r = g(25000, 0.035, 4000000, 1000000)
+    finally:
+        sh.other_median = orig
+    assert r["newMonth"] == 35000                            # 25000 + 10000,全额不打折
+    assert r["newCoast"] > r["curCoast"]                     # 分母变大 → 线变高
+    assert r["newProgress"] < r["curProgress"]               # 进度必须变低,不能越补越乐观
+    assert r["applied"] is False                             # 攒够月份前只标注、不改数
+
+
 def test_lifelong_out():
     """终身支出口径:有终点的项(房贷/幼儿园)不进 FI 线分母,但被单列出来。"""
     from metrics import lifelong_out
@@ -690,6 +746,10 @@ if __name__ == "__main__":
     check("SBBI 组合回放", test_sbbi_replay)
     check("IPS 操作合规审计", test_ips_check)
     check("支出去向=对总量的切分", test_bill_coverage)
+    check("支出品类与刚性映射", test_spend_categorize)
+    check("支付渠道识别", test_spend_pay_channel)
+    check("中位数抗一次性+样本守卫", test_spend_median_guard)
+    check("FI 分母漏项(补进去只会更保守)", test_spend_fi_gap)
     check("终身支出口径(FI 分母)", test_lifelong_out)
     check("事件阶梯(月储蓄随事件变化)", test_event_ladder)
     check("育儿储备(有限期负债的现值)", test_childcare_reserve)
