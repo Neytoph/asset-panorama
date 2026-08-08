@@ -15,6 +15,10 @@
     --paper: #f4f1ea; --ink: #111111;
     --c-prop: #4a3aa7; --c-eq: #2a78d6; --c-bond: #1baf7a; --c-cash: #008300; --c-gold: #eda100;
     --red: #e34948; --shadow: 6px 6px 0 var(--ink);
+    /* 涨跌专用令牌(中式:涨红跌绿),取值=热力图 ramp 的深端,文字与色块同源。
+       别拿大类色(--c-bond 等)当涨跌/好坏用:那是「分类色被当状态色」,
+       会让绿色在同一页同时表示「固收」「赚钱」「下跌」三件事。 */
+    --up: #c41e3a; --down: #0a7a45;
     /* 文字走 Sans,所有数字走等宽 Mono(方案 C) */
     --mono: "IBM Plex Mono", "PingFang SC", ui-monospace, monospace;
   }
@@ -192,7 +196,7 @@
     font-weight: 900; margin-left: 6px; vertical-align: 2px; }
   .rank .v { font-weight: 900; }
   .rank .pl { font-size: 11px; font-weight: 900; white-space: nowrap; }
-  .pl.up { color: var(--c-bond); } .pl.dn { color: var(--red); }
+  .pl.up { color: var(--up); } .pl.dn { color: var(--down); }   /* 中式:涨红跌绿,与热力图同口径 */
 
   /* 折线块 */
   .spark-blk .pad { padding-top: 10px; }
@@ -222,17 +226,18 @@
   .road .step { flex: 1; border: 2.5px solid var(--ink); background: #fff; padding: 9px 11px; min-width: 0; }
   .road .step .t { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; opacity: .65; }
   .road .step .v { font-size: 19px; font-weight: 900; white-space: nowrap; }
-  .road .step.pos .v { color: var(--c-bond); }
-  .road .step.neg .v { color: var(--red); }
+  /* 进钱/出钱是现金流方向,不是涨跌——靠已有的 +/− 号和字重表达,不占红绿 */
+  .road .step.pos .v { color: var(--ink); }
+  .road .step.neg .v { color: var(--ink); opacity: .72; }
   .road .step.big { background: var(--ink); color: var(--paper); }
   .road .step.big .t { opacity: .75; }
-  .road .step.big .v { color: var(--c-bond); font-size: 22px; }
+  .road .step.big .v { color: var(--paper); font-size: 22px; }
   .cd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .cd .n { font-size: 40px; font-weight: 900; line-height: 1; }
   .cd .u { font-weight: 900; font-size: 13px; letter-spacing: .1em; }
   .jump { display: flex; align-items: center; gap: 12px; font-weight: 900; margin-top: 4px; flex-wrap: wrap; }
   .jump .from { font-size: 15px; opacity: .55; }
-  .jump .to { font-size: 26px; color: var(--c-bond); }
+  .jump .to { font-size: 26px; color: var(--ink); }
   .jump .arrow { font-size: 20px; }
 
   /* 未来大事时间轴:确信度 合同=实线 / 计划=虚线 / 猜测=点线 */
@@ -242,16 +247,16 @@
   .tl-ev { flex: 1; min-width: 0; position: relative; padding-top: 40px; }
   .tl-ev .dot { position: absolute; top: 19px; left: 0; width: 17px; height: 17px;
     border: 3px solid var(--ink); background: #fff; border-radius: 50%; }
-  .tl-ev.c-合同 .dot { background: var(--c-bond); }
-  .tl-ev.c-计划 .dot { background: var(--c-eq); }
+  .tl-ev.c-合同 .dot { background: var(--ink); }
+  .tl-ev.c-计划 .dot { background: #9a958a; }
   .tl-ev.c-猜测 .dot { background: #fff; border-style: dotted; }
   .tl-ev .when { position: absolute; top: 0; left: 0; font-weight: 900; font-size: 12px; }
   .tl-ev .nm { font-weight: 900; font-size: 13px; line-height: 1.3; }
   .tl-ev .im { font-weight: 800; font-size: 11.5px; margin-top: 3px; }
   .tl-ev .cf { display: inline-block; font-size: 9px; font-weight: 900; padding: 1px 5px;
     border: 1.5px solid var(--ink); margin-top: 4px; }
-  .tl-ev.c-合同 .cf { background: var(--c-bond); color: #fff; }
-  .tl-ev.c-计划 .cf { background: var(--c-eq); color: #fff; }
+  .tl-ev.c-合同 .cf { background: var(--ink); color: var(--paper); }
+  .tl-ev.c-计划 .cf { background: #9a958a; color: var(--paper); }
   .tl-ev.c-猜测 .cf { background: repeating-linear-gradient(45deg,#fff 0 3px,#ddd 3px 6px); }
 
   /* FI 三数字 */
@@ -330,6 +335,26 @@
   /* 同行卡片保持等高(grid 默认 stretch)——试过 align-items:start 让卡片贴合内容,
      空白是没了,但底边参差比空白更难受,已回退。空白靠给短卡片补内容解决,不靠改对齐。 */
 
+  /* ── 数据表:图表的无颜色等价读法 ── */
+  .dt-blk { margin-top: 28px; }
+  .dt-blk > summary { cursor: pointer; list-style: none; padding: 14px 18px;
+    border-bottom: 4px solid var(--ink); }
+  .dt-blk > summary::-webkit-details-marker { display: none; }
+  .dt-h { font-size: 19px; font-weight: 900; letter-spacing: .05em; }
+  .dt-h small { font-size: 11px; font-weight: 700; letter-spacing: .1em; opacity: .6; margin-left: 8px; }
+  .dt-blk > summary::after { content: "展开 ▾"; float: right; font-size: 11px;
+    font-weight: 900; letter-spacing: .12em; opacity: .55; }
+  .dt-blk[open] > summary::after { content: "收起 ▴"; }
+  table.dt { width: 100%; border-collapse: collapse; margin: 0 0 26px;
+    font-size: 12.5px; font-weight: 700; }
+  table.dt caption { text-align: left; font-weight: 900; font-size: 13px;
+    letter-spacing: .06em; padding: 0 0 6px; }
+  table.dt th, table.dt td { border: 2px solid var(--ink); padding: 5px 9px; text-align: left; }
+  table.dt th { background: var(--ink); color: var(--paper); font-weight: 900;
+    letter-spacing: .05em; white-space: nowrap; }
+  table.dt td.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  table.dt tbody tr:nth-child(even) { background: rgba(17,17,17,.04); }
+
   /* ── 动效包:悬停抬起 · 入场揭示 · 曲线自绘 · 行悬停(reduced-motion 见文末兜底) ── */
   .blk, .mosaic { transition: transform .18s cubic-bezier(.16,1,.3,1), box-shadow .18s cubic-bezier(.16,1,.3,1); }
   .blk:hover { transform: translate(-3px,-3px); box-shadow: 9px 9px 0 var(--ink); }
@@ -348,13 +373,16 @@
      不引入任何新颜色——底色从深紫到纯白都有,任何一种描边色都会在某些块上消失,
      而"周围暗下去"在所有底色上都成立。.hl 是给测试/键盘焦点用的同款类。 */
   .cell { transition: flex-grow .45s cubic-bezier(.16,1,.3,1), filter .18s ease; }
+  .cell:focus { outline: none; }   /* 用 :focus-visible 那套环,避免鼠标点击也画环 */
   .mosaic:hover .cell { filter: brightness(.68) saturate(.6); }
-  .mosaic .cell:hover, .mosaic .cell.hl { filter: none;
+  .mosaic .cell:hover, .mosaic .cell.hl, .mosaic .cell:focus-visible { filter: none;
     outline: 3px solid var(--paper); outline-offset: -3px;
     box-shadow: 6px 6px 0 rgba(0,0,0,.3); z-index: 5; }
   .hm-tile { transition: filter .15s ease; }
+  .hm-tile:focus { outline: none; }
   .hm.inline:hover .hm-tile { filter: brightness(.72) saturate(.65); }
-  .hm.inline .hm-tile:hover, .hm.inline .hm-tile.hl { filter: none;
+  .hm.inline .hm-tile:hover, .hm.inline .hm-tile.hl,
+  .hm-tile:focus-visible { filter: none;
     outline: 2.5px solid var(--ink); outline-offset: -2.5px;
     box-shadow: inset 0 0 0 4px var(--paper); z-index: 4; }
   /* 净值粗线自绘 */
@@ -605,6 +633,11 @@
 </div>
 </section>
 
+<details class="blk dt-blk" id="datatable">
+  <summary><span class="dt-h">📋 数据表 <small>所有图表的等价表格 · 供读屏/打印/核对 · 打印时自动展开</small></span></summary>
+  <div class="pad" id="datatable-body"></div>
+</details>
+
 <footer>
   <span>ASSET PANORAMA POSTER EDITION · 仅供个人参考<button class="print-btn" id="print-btn">🖨 打印 / 存 PDF</button><button class="print-btn" id="privacy-btn">👓 演示脱敏</button></span>
   <span id="foot-r"></span>
@@ -707,7 +740,7 @@ safe('HERO', function(){
   const diffWan = Math.abs(diff)/1e4;
   const pnlWan = (PD.pnlTotal||0)/1e4;
   const heroD = document.getElementById('hero-d');
-  heroD.style.color = diff>=0 ? 'var(--c-bond)' : 'var(--red)';
+  heroD.style.color = diff>=0 ? 'var(--up)' : 'var(--down)';
   heroD.textContent =
     arrow+' 较上期 '+(diff>=0?'+':'−')+diffWan.toFixed(1)+'万 / '+(pct>=0?'+':'−')+Math.abs(pct).toFixed(2)+'%'
     +' · 累计浮盈 '+(pnlWan>=0?'+':'−')+Math.abs(pnlWan).toFixed(1)+'万';
@@ -875,9 +908,9 @@ safe('换房路线图', function(){
   </div>`;
 
   html += `<div class="kv"><span class="txt">房产占比 <span class="sub">(锚定值口径)</span></span>
-    <span class="v">${(R.propPctNow*100).toFixed(1)}% <span class="arrow">→</span> <span style="color:var(--c-bond)">${(R.propPctAfter*100).toFixed(1)}%</span></span></div>`;
+    <span class="v">${(R.propPctNow*100).toFixed(1)}% <span class="arrow">→</span> <b>${(R.propPctAfter*100).toFixed(1)}%</b></span></div>`;
   html += `<div class="kv"><span class="txt">金融资产</span>
-    <span class="v">${wan(D.financial)} <span class="arrow">→</span> <span style="color:var(--c-bond)">${wan(R.finAfter)}</span></span></div>`;
+    <span class="v">${wan(D.financial)} <span class="arrow">→</span> <b>${wan(R.finAfter)}</b></span></div>`;
   if (F){
     const pAfter = (D.financial + R.released) / F.freeNumber;
     html += `<div class="kv"><span class="txt">真·自由进度 <span class="sub">(换房一跃)</span></span>
@@ -887,11 +920,11 @@ safe('换房路线图', function(){
     const yc = yr(F.coastScenarios), yf = yr(F.freeScenarios);
     if (yc!=null && yf!=null)
       html += `<div class="kv"><span class="txt">到达时间 <span class="sub">(基准回报 4%)</span></span>
-        <span class="v">Coast <b>${yc.toFixed(1)} 年</b> <span class="sub">·</span> 真·自由 <b style="color:var(--c-bond)">${yf.toFixed(1)} 年</b></span></div>`;
+        <span class="v">Coast <b>${yc.toFixed(1)} 年</b> <span class="sub">·</span> 真·自由 <b>${yf.toFixed(1)} 年</b></span></div>`;
   }
   const bridgeOk = (R.bridgeGap||0) <= 0;
   html += `<div class="kv"><span class="txt">过桥资金 <span class="sub">(卖房款到账前要先付)</span></span>
-    <span class="v" style="color:${bridgeOk?'var(--c-bond)':'var(--red)'}">${wan(R.bridgeNeed)} ${bridgeOk?'· 可变现资产可覆盖 ✓':'· 缺口 '+wan(R.bridgeGap)}</span></div>`;
+    <span class="v" style="color:${bridgeOk?'var(--ink)':'var(--red)'}">${wan(R.bridgeNeed)} ${bridgeOk?'· 可变现资产可覆盖 ✓':'· 缺口 '+wan(R.bridgeGap)}</span></div>`;
   // SBBI 回放的行动结论留在这里;完整回放已移入年报(annual_report),主页不再陈列
   const SB = D.sbbiGoal || D.sbbi;
   const sbTxt = SB && (SB.perYear||[]).length
@@ -921,7 +954,8 @@ safe('大类配置色块', function(){
   const wrap = mosaic.closest('.mosaic-wrap');
   const backBtn = document.getElementById('mosaic-back');
   const pathEl = document.getElementById('mosaic-path');
-  if (matchMedia('(hover: none)').matches) {   // 触屏没有悬停,说明文案不再提 heatmap
+  const NO_HOVER = matchMedia('(hover: none)').matches;
+  if (NO_HOVER) {                              // 触屏没有悬停,说明文案不再提 heatmap
     const t = document.getElementById('mosaic-cap-t');
     if (t) t.textContent = '大类配置 ── 色块面积 = 真实占比 · 点击下钻并联动下方持仓地图与走势';
   }
@@ -1067,7 +1101,8 @@ safe('大类配置色块', function(){
       const share = (k.value/totalV*100).toFixed(1);
       const tip = `${k.name} · ${wan(k.value)} · ${share}%${p!=null?' · '+fmtChg(p)+(sd?'('+sd+')':''):''}`;
       const pc = (v,base)=>(v/base*100).toFixed(3)+'%';   // 百分比定位:块尺寸变化时瓦片自适应
-      return `<div class="hm-tile${lg?' lg':''}" data-name="${esc(k.name)}" title="${esc(tip)}" style="left:${pc(r.x,W)};top:${pc(r.y,H)};`
+      return `<div class="hm-tile${lg?' lg':''}" data-name="${esc(k.name)}" title="${esc(tip)}"`
+        + ` tabindex="0" role="img" aria-label="${esc(tip)}" style="left:${pc(r.x,W)};top:${pc(r.y,H)};`
         + `width:${pc(r.w,W)};height:${pc(r.h,H)};background:${hs.bg};`
         + `color:${hs.fg}">${small?'':`<span class="n">${esc(k.name)}</span><span class="c" style="opacity:.9">${share}%${pctHtml}</span>`}</div>`;
     }).join('');
@@ -1151,8 +1186,17 @@ safe('大类配置色块', function(){
         }
       } else {
         el.style.cursor = 'pointer';
-        el.addEventListener('mouseenter', ()=>{ if(el.dataset.heatPainted!=='1') showHeat(el, it); });
-        el.addEventListener('mouseleave', hideHeat);
+        // 触屏没有悬停:窄块(铺不下常驻热力的)改成点击弹浮层,否则那些成分在手机上永远看不到。
+        if(NO_HOVER){
+          el.addEventListener('click', e=>{
+            if(el.dataset.heatPainted === '1') return;      // 已铺常驻热力,不弹
+            e.stopPropagation();                            // 别顺带触发下钻
+            heatEl && heatEl.parentElement === el ? hideHeat() : showHeat(el, it);
+          }, true);
+        } else {
+          el.addEventListener('mouseenter', ()=>{ if(el.dataset.heatPainted!=='1') showHeat(el, it); });
+          el.addEventListener('mouseleave', hideHeat);
+        }
         el.addEventListener('click', ()=>{
           // 点击瞬间捕获当前 heatmap 瓦片矩形,供 FLIP 变形用
           const src = (el.dataset.heatPainted === '1' ? el : heatEl);   // 常驻瓦片优先,其次 hover 浮层
@@ -1161,6 +1205,16 @@ safe('大类配置色块', function(){
           path.push(it);
           update(tiles);
           window._syncSunburstTo && window._syncSunburstTo(it.name);   // 带动旭日图
+        });
+      }
+      // 键盘可达:能点的块就要能 Tab 到、能回车触发。焦点环复用 hover 那套 .hl,
+      // 不另造一套视觉——键盘用户看到的高亮和鼠标用户完全一致。
+      if(el.style.cursor === 'pointer'){
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', el.title);
+        el.addEventListener('keydown', e=>{
+          if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); el.click(); }
         });
       }
       mosaic.appendChild(el);
@@ -1275,6 +1329,20 @@ safe('大类配置色块', function(){
     };
     if (!apply()) setTimeout(apply, 560);
   }
+  window._chgOf = nm => { const c = chgInfo(nm); return c ? c.p : null; };  // 表格视图复用同一口径
+
+  // 触屏读数:瓦片按真实面积铺,小的必然小于 44px 触摸下限 —— 但**不为了凑触摸尺寸去放大瓦片**,
+  // 面积就是占比,放大等于让图撒谎。改为保证信息可达:点一下把该瓦片的读数打到路径条上,
+  // 完整清单还有页尾「数据表」兜底。
+  if(NO_HOVER){
+    mosaic.addEventListener('click', e=>{
+      const t = e.target.closest('.hm-tile'); if(!t) return;
+      e.stopPropagation();
+      mosaic.querySelectorAll('.hm-tile.hl').forEach(x=>x.classList.remove('hl'));
+      t.classList.add('hl');
+      if(pathEl) pathEl.textContent = t.getAttribute('title') || t.dataset.name || '';
+    }, true);
+  }
   window._syncMosaicTo = nm => {
     if (path.length && path[path.length-1].name === nm) return true;   // 已在该节点
     const walk = (items, stack) => {
@@ -1296,6 +1364,61 @@ safe('大类配置色块', function(){
     return false;
   };
   update();
+});
+
+/* 数据表:每张图的等价表格。
+   规则要求「每张图有 table-view 孪生」——凡是靠颜色编码的信息(热力涨跌/刚性/大类)
+   都必须有一条不依赖颜色的读法,给读屏、色觉障碍、打印和手工核对用。
+   当日涨跌不在这里重算:走 mosaic 暴露的 window._chgOf,单一口径。 */
+safe('数据表', function(){
+  const el = document.getElementById('datatable-body'); if(!el) return;
+  const n0 = v => v==null ? '—' : Math.round(v).toLocaleString();
+  const p1 = v => v==null ? '—' : (v*100).toFixed(1)+'%';
+  // fmtChg 定义在 mosaic 闭包里,这里看不到 —— 本块自带一个,别去够外面的作用域
+  const pct2 = v => (v>=0?'+':'−')+Math.abs(v*100).toFixed(2)+'%';
+  const chg = nm => { const c = window._chgOf && window._chgOf(nm); return c==null ? '—' : pct2(c); };
+  const tbl = (cap, head, rows) => rows.length ? `<table class="dt"><caption>${esc(cap)}</caption>
+      <thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i?' class="num"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+  let html = '';
+
+  const NW = D.networth || 1;
+  html += tbl('大类配置（= 色块 mosaic / 持仓地图旭日图）',
+    ['大类','金额','占净资产','目标','偏离','当日涨跌'],
+    Object.entries(D.classes||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
+      const t = (D.target||{})[k];
+      return [esc(k), n0(v), p1(v/NW), t==null?'—':p1(t),
+              t==null?'—':((v/NW-t>=0?'+':'−')+Math.abs((v/NW-t)*100).toFixed(1)+'pp'), chg(k)];
+    }));
+
+  html += tbl('持仓明细（= 持仓排行 / 色块下钻热力）',
+    ['名称','市值','占净资产','浮盈','浮盈%','当日涨跌'],
+    (D.positions||[]).map(x=>[esc(x[0]), n0(x[1]), p1(x[1]/NW),
+      x[3]==null?'—':n0(x[3]), x[4]==null?'—':p1(x[4]), chg(x[0])]));
+
+  const R = D.rebalance||{};
+  html += tbl('再平衡执行单', ['大类','当前','目标','偏离','缺口金额'],
+    (R.rows||[]).map(r=>[esc(r.cls), p1(r.curPct), p1(r.tgtPct),
+      (r.devPp>=0?'+':'−')+Math.abs(r.devPp*100).toFixed(1)+'pp',
+      r.gap==null?'—':n0(r.gap)]));
+
+  const S = D.spend||{};
+  html += tbl(`支出构成 ${esc(S.month||'')}（= 刚性条 / 品类条）`,
+    ['品类','刚性','金额','笔数'],
+    (S.categories||[]).map(c=>[esc(c.品类), esc(c.刚性), n0(c.金额), c.笔数]));
+  html += tbl(`出账渠道 ${esc(S.month||'')}`, ['层','渠道','金额','笔数','已导入'],
+    (S.channels||[]).map(c=>[esc(c.层), esc(c.渠道), n0(c.金额), c.笔数, esc(c.已导入)]));
+
+  html += tbl('现金流月度历史（= 月度走势 / 计划vs真实）',
+    ['月份','已对账','税后收入','固定支出','其他实际支出','净结余','储蓄率','定投额'],
+    (D.cashflowHistory||[]).map(r=>[esc(r.月份), esc(r.已对账), n0(r.税后收入), n0(r.固定支出),
+      n0(r.其他实际支出), n0(r.净结余), p1(r.储蓄率), n0(r.定投额)]));
+
+  html += tbl('净值走势（= 首屏折线 / 选中资产走势）', ['日期','总净资产','金融资产','数据降级'],
+    (D.history||[]).map(r=>[esc(r.date), n0(r['总净资产']), n0(r['金融资产']),
+      r.degraded ? '⚠ 是' : '—']));
+
+  el.innerHTML = html || '<div class="note">暂无数据</div>';
 });
 
 /* 净值粗线走势 */
@@ -1342,7 +1465,7 @@ safe('净值走势', function(){
   });
   g+=`<line id="sp-xh" y1="${P.t}" y2="${HT-P.b}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
   g+=`<line id="sp-yh" x1="${P.l}" x2="${W-P.r}" stroke="#111" stroke-width="1.5" stroke-dasharray="4 4" opacity="0"/>`;
-  g+=`<circle id="sp-hd" r="7" fill="var(--c-bond)" stroke="#111" stroke-width="3" opacity="0" pointer-events="none"/>`;
+  g+=`<circle id="sp-hd" r="7" fill="var(--ink)" stroke="var(--paper)" stroke-width="3" opacity="0" pointer-events="none"/>`;
   svg.innerHTML=g;
   const xh=svg.querySelector('#sp-xh'), yh=svg.querySelector('#sp-yh'), hd=svg.querySelector('#sp-hd');
   const tip=document.getElementById('spark-tip');
@@ -1449,7 +1572,7 @@ safe('真实收益', function(){
   const P = D.perf || {}, t = P.total;
   if (!t){ el.innerHTML = '<div class="note">暂无台账收益数据 · 在「持仓管理」记账后显示</div>'; return; }
   const sPct = v => (v>=0?'+':'−')+Math.abs(v*100).toFixed(1)+'%';
-  const col = v => v>=0 ? 'var(--c-bond)' : 'var(--red)';
+  const col = v => v>=0 ? 'var(--up)' : 'var(--down)';   // 盈亏=涨跌语义,中式
   let html = `<div class="kv"><span>组合累计 <span class="sub">浮盈/净投入</span></span>
     <span class="v" style="color:${col(t.cum)};font-size:17px">${sPct(t.cum)}</span></div>`;
   html += `<div class="kv"><span>净投入 → 现值</span><span class="v">${wan(t.invested)} → ${wan(t.invested+t.pnl)}</span></div>`;
@@ -1587,6 +1710,9 @@ safe('支出构成', function(){
   // 这块的金额都是几百~几千,走 wan() 会显示成「0.3万」等于没信息;演示脱敏照样要遮
   const yuan = v => window._privacy ? '¥***' : '¥' + Math.round(v).toLocaleString();
   // 绿=可压缩(弹性,有腾挪空间) · 红=砍不掉(刚性) —— 颜色读的是「余地」不是「好坏」
+  // 刚性三档沿用红/黄/绿是**知情的例外**:全页红绿已归涨跌专用,这里是唯一另一套语义。
+  // 成立的条件是每根条都带「刚性/半弹性/弹性」直接文字标签(颜色不是唯一编码),
+  // 且它独处 02 现金流区、跟资产区的涨跌热力不同屏。改动这里前先想清楚这两条还成不成立。
   const RCOL = {'刚性':'var(--red)', '半弹性':'var(--c-gold)', '弹性':'var(--c-bond)', '未归类':'#8a8172'};
   const RTXT = {'刚性':'#fff', '半弹性':'var(--ink)', '弹性':'#fff', '未归类':'#fff'};
   const cats = S.categories, tot = cats.reduce((s,c)=>s+c.金额, 0) || 1;
@@ -1659,13 +1785,13 @@ safe('现金流月账', function(){
   const yuan = v => window._privacy ? '¥***' : (v>=0?'+':'−')+'¥'+Math.abs(Math.round(v)).toLocaleString();
   const row = (name, amt, bold) =>
     `<div class="kv"><span class="txt" ${bold?'style="font-weight:900"':''}>${name}</span>
-     <span class="v" style="color:${amt>=0?'var(--c-bond)':'var(--red)'}">${yuan(amt)}</span></div>`;
+     <span class="v"${amt>=0?'':' style="opacity:.72"'}>${yuan(amt)}</span></div>`;
   // 明细折叠:这些数一个月都不变一次(房租/幼儿园/话费…),是义务内容,不该占观赏区的高度。
   // 摘要行常驻,想看逐项点开——腾出来的空间用于讲「计划 vs 真实」。
   const fold = (sumLabel, sumAmt, rowsHtml) =>
     `<details class="cf-d"><summary><div class="kv" style="border-bottom:0">
        <span class="txt" style="font-weight:900">${sumLabel} <span class="tog"></span></span>
-       <span class="v" style="color:${sumAmt>=0?'var(--c-bond)':'var(--red)'}">${yuan(sumAmt)}</span></div></summary>
+       <span class="v"${sumAmt>=0?'':' style="opacity:.72"'}>${yuan(sumAmt)}</span></div></summary>
      <div class="cf-detail">${rowsHtml}</div></details>`;
 
   // ── 收入明细(折叠) ──
@@ -1709,9 +1835,9 @@ safe('现金流月账', function(){
       ${cell('真实 '+esc(R.月份), hd)}
       ${cell('差', hd)}
       <div>净结余</div>${cell('<b>'+yuan(D.netCashflow)+'</b>')}${cell('<b>'+yuan(R.净结余)+'</b>')}
-      ${cell(`<span style="color:${dNet>=0?'var(--c-bond)':'var(--red)'}">${yuan(dNet)}</span>`)}
+      ${cell(`<b>${yuan(dNet)}</b>`)}
       <div>储蓄率</div>${cell('<b>'+pct(planRate)+'</b>')}${cell('<b>'+pct(R.储蓄率)+'</b>')}
-      ${cell(`<span style="color:${dRate>=0?'var(--c-bond)':'var(--red)'}">${(dRate*100>=0?'+':'')+(dRate*100).toFixed(1)}pp</span>`)}
+      ${cell(`<b>${(dRate*100>=0?'+':'')+(dRate*100).toFixed(1)}pp</b>`)}
       <div>定投</div>${cell('¥'+(dca.month||0).toLocaleString()+'/月')}${cell('¥'+R.定投额.toLocaleString()+'/月')}${cell('—')}
     </div>`;
     // 两个大误差对冲出来的巧合,不是准——奖金停了计划数立刻偏乐观,这一句才是这块的价值
@@ -1720,7 +1846,7 @@ safe('现金流月账', function(){
       两笔大误差正好抵消,净结余只差 ${yuan(dNet)}。<b>这不是准,是巧</b>:奖金停了计划数就会明显偏乐观。</div>`;
   } else {
     html += `<div class="kv"><span class="txt" style="font-weight:900">月净现金流</span>
-      <span class="v" style="color:var(--c-bond)">${yuan(D.netCashflow)}</span></div>`;
+      <span class="v"><b>${yuan(D.netCashflow)}</b></span></div>`;
     const TS = D.trueSavings;
     if (TS && TS.insufficient)
       html += `<div class="note" style="border-color:var(--red)">⚠ 净结余是<b>计划口径</b>(只含已知固定项,
@@ -1731,7 +1857,7 @@ safe('现金流月账', function(){
   else if (!R){
     const tgt = Object.keys(dca.targets||{}).join('、') || '沪深300ETF';
     const p2 = dca.mode==='按结余比例' ? `结余×${((dca.ratio||0)*100).toFixed(0)}%` : '固定月额';
-    html += `<div class="kv"><span class="txt">定投(${p2})</span><span class="v" style="color:var(--c-bond)">¥${dca.month.toLocaleString()}/月·${esc(dca.freq||'每周')}¥${(dca.per||0).toLocaleString()}→${esc(tgt)}</span></div>`;
+    html += `<div class="kv"><span class="txt">定投(${p2})</span><span class="v">¥${dca.month.toLocaleString()}/月·${esc(dca.freq||'每周')}¥${(dca.per||0).toLocaleString()}→${esc(tgt)}</span></div>`;
   }
   html += `<div class="note">被动收入≈<b>¥${(D.passiveMonth||0).toLocaleString()}/月</b> 覆盖固定支出 ${((D.coverage||0)*100).toFixed(0)}%<br>应急可支撑 ${(D.runway||0).toFixed(0)} 个月 · 投资房若出租≈+¥${(D.hypoRent||0).toLocaleString()}/月</div>`;
   document.getElementById('cashflow').innerHTML = html;
