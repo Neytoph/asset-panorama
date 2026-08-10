@@ -979,17 +979,28 @@ safe('大类配置色块', function(){
   // 必须优先于 Dietz——补记的交易(交易日 < 录入日)会让市值台阶落在录入日而净投入挂在交易日,
   // 按日期取净投入就取不到,加仓会被当成暴涨。归一化只看数量,与交易日期无关。
   const qtyOn = (name, date) => (((PD.qtyByDate||{})[name]||{})[date]);
+  const pxOn  = (name, date) => (((PD.priceByDate||{})[name]||{})[date]);
+  // 口径优先级:原币单价 > 数量归一化 > Dietz。
+  // 市值 = 单价 × 数量 × 汇率,拿市值环比当涨跌会同时吃进后两者:
+  //   数量:补记交易 → 假暴涨(2026-08-07 SpaceX +112%)
+  //   汇率:周末美股没有新收盘,汇率动 0.08% → 四只美股显示同涨 0.08%(2026-08-09)
+  // 单价环比对两者都免疫,所以只要快照记了单价就优先用它。
   const chgInfo = name => {
     const s = seriesOf(name);
     if(!s || s.length<2 || s[s.length-1][0] < MIND) return null;
     for(let i=s.length-1, k=0; i>=1 && k<3; i--, k++){
       const d0=s[i-1][0], d1=s[i][0];
+      // 汇率漂移日:同币种全体单位市值同幅变动 = 汇率在动、行情没动(周末/休市)。
+      // 直接跳过,继续往前找真正有行情的交易日,而不是把汇率显示成涨跌。
+      if(((PD.fxFrozen||{})[name]||[]).indexOf(d1) >= 0) continue;
       let a=s[i-1][1], b=s[i][1], nb=0;
-      const q0=qtyOn(name,d0), q1=qtyOn(name,d1);
-      if(q0!=null && q1!=null && q0>0 && q1>0){
-        a = a * (q1/q0);                     // 昨值折算成「今天这么多份」的口径
+      const x0=pxOn(name,d0), x1=pxOn(name,d1);
+      if(x0>0 && x1>0){                      // 首选:原币单价环比
+        a = x0; b = x1;
       } else {
-        nb = netBuy(name, d1);               // 拿不到数量(账户/投顾)才退回 Dietz
+        const q0=qtyOn(name,d0), q1=qtyOn(name,d1);
+        if(q0!=null && q1!=null && q0>0 && q1>0) a = a * (q1/q0);
+        else nb = netBuy(name, d1);          // 拿不到数量(账户/投顾)才退回 Dietz
       }
       if(!(a+nb)) return null;
       const p=(b-a-nb)/(a+nb);

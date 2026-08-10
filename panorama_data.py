@@ -252,14 +252,54 @@ def collect(persist_history=True, fetch_klines=True):
     # 老快照没有这一列时才退回台账推演(_qty_asof)——台账按交易日算,补记的交易会对不上。
     hf_all = read_csv("history_full.csv", [])
     qty_dates = sorted({r.get("date") for r in hf_all if r.get("date")})[-8:]
-    snap_qty = {}
+    snap_qty, snap_px = {}, {}
+    dset = set(qty_dates)
     for r in hf_all:
-        if r.get("类型") != "持仓" or r.get("date") not in set(qty_dates):
+        if r.get("类型") != "持仓" or r.get("date") not in dset:
             continue
         try:
             snap_qty.setdefault(r.get("名称"), {})[r["date"]] = float(r.get("数量") or "")
         except ValueError:
             pass
+        try:
+            snap_px.setdefault(r.get("名称"), {})[r["date"]] = float(r.get("单价") or "")
+        except ValueError:
+            pass
+    # 原币单价序列:当日涨跌的首选口径。市值环比会被数量变动和汇率漂移污染,
+    # 单价环比两者都免疫(见 portfolio_tracker.persist 注释)。
+    price_by_date = {h["name"]: snap_px[h["name"]] for h in holdings
+                     if len(snap_px.get(h["name"], {})) >= 2}
+
+    # 汇率漂移检测(给没有单价的老快照兜底):
+    # 同币种下所有持仓的**单位市值**环比若完全一致,那只可能是汇率在动——
+    # 四只不同的股票不可能同日同幅到小数点后三位。典型场景:周末美股没有新收盘,
+    # 汇率动 0.08% → 面板把它显示成"全部美股同涨 0.08%"(2026-08-09 实况)。
+    # 命中的日期标记为冻结,前端跳过、往前回退取上一个真实交易日。
+    # 只看有行情源的持仓:期权等手动估值项的值不随汇率浮动(比值恒为 1.000000),
+    # 混进来会把整组的离散度撑大,汇率漂移就检测不出来了。
+    ccy_of = {h["name"]: h.get("ccy", "CNY") for h in holdings if h.get("quote_source")}
+    unit = {}                                  # {名称: {日期: 单位市值}}
+    for nm, m in snap_qty.items():
+        for d, q in m.items():
+            v = next((float(r["金额"]) for r in hf_all
+                      if r.get("类型") == "持仓" and r.get("名称") == nm and r.get("date") == d), None)
+            if v is not None and q:
+                unit.setdefault(nm, {})[d] = v / q
+    fx_frozen = {}
+    for i in range(1, len(qty_dates)):
+        d0, d1 = qty_dates[i-1], qty_dates[i]
+        groups = {}
+        for nm, c in ccy_of.items():
+            u = unit.get(nm, {})
+            if d0 in u and d1 in u and u[d0]:
+                groups.setdefault(c, []).append((nm, u[d1] / u[d0]))
+        for c, items in groups.items():
+            if c == "CNY" or len(items) < 2:
+                continue
+            rs = [r for _, r in items]
+            if max(rs) - min(rs) < 1e-5 and abs(sum(rs)/len(rs) - 1) > 1e-6:
+                for nm, _ in items:
+                    fx_frozen.setdefault(nm, []).append(d1)
     qty_by_date = {}
     for h in holdings:
         nm = h["name"]
@@ -757,7 +797,7 @@ def collect(persist_history=True, fetch_klines=True):
         "history": [{"date": h["date"], "总净资产": float(h["总净资产"]),
                      "金融资产": float(h["金融资产"]),
                      "degraded": bool(dd_doc.get(h["date"]))} for h in history],
-        "tradeNet": trade_net, "qtyByDate": qty_by_date, "tradeMarks": trade_marks, "bigTrades": big_trades,
+        "tradeNet": trade_net, "qtyByDate": qty_by_date, "priceByDate": price_by_date, "fxFrozen": fx_frozen, "tradeMarks": trade_marks, "bigTrades": big_trades,
         "pxMeta": px_meta,
         "tree": tree_list,
         "aggBook": agg_book,
