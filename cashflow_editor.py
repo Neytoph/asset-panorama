@@ -619,7 +619,9 @@ def recon_page(msg="", rebuilt=False, month=None, reward=""):
     est_rate = est_net / income if income else 0
     cur = next((r for r in history if r["月份"] == month), None)
     locked = bool(cur and cur.get("已对账") == "是")
-    prefill_income = cur["税后收入"] if locked else income
+    # 草稿行里可能已有人工核过的收入(如按工资到账+公积金+配偶实算),别用模型估算把它覆盖回去;
+    # 模型估算值在上方「配置估算(只读)」框里照常显示,两者可对照。
+    prefill_income = (cur or {}).get("税后收入") or income
     prefill_other = cur.get("其他实际支出", 0) if cur else 0
     prefill_note = (cur.get("对账备注") or "") if cur else ""
     notify = "if(window.parent!==window)window.parent.postMessage('rebuilt','*');" if rebuilt else ""
