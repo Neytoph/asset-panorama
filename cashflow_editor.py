@@ -608,11 +608,15 @@ def _recon_dca(cf, actual_net):
 def recon_page(msg="", rebuilt=False, month=None, reward=""):
     cf = load_cf()
     est = compute(cf)
-    month = month or datetime.date.today().strftime("%Y-%m")
+    history = cfh_mod.load_history()
+    if not month:
+        # 默认停在「最该对的那个月」:上月没锁定就是上月(账单都是月初才出全),否则才是当月
+        prev = (datetime.date.today().replace(day=1) - datetime.timedelta(days=1)).strftime("%Y-%m")
+        done = any(r["月份"] == prev and r.get("已对账") == "是" for r in history)
+        month = datetime.date.today().strftime("%Y-%m") if done else prev
     income, fixed = est["income"], est["fixed_out"]
     est_net = est["net_cf"]
     est_rate = est_net / income if income else 0
-    history = cfh_mod.load_history()
     cur = next((r for r in history if r["月份"] == month), None)
     locked = bool(cur and cur.get("已对账") == "是")
     prefill_income = cur["税后收入"] if locked else income
