@@ -195,6 +195,11 @@ def reconciled_months():
     return sum(1 for r in cfh.load_history() if r.get("已对账") == "是")
 
 
+def months_with_data():
+    """有品类切分数据的月份，升序。面板的月份切换器按它列选项。"""
+    return sorted({r["月份"] for r in load_categories()})
+
+
 def enough_history(n=MIN_MONTHS):
     """趋势/中位数类模块的渲染开关：已对账月份够了才显示，不足时面板不画单点折线。"""
     return reconciled_months() >= n

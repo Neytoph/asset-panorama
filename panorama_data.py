@@ -719,12 +719,16 @@ def collect(persist_history=True, fetch_klines=True):
              "enough": spend_hist.enough_history(), "minMonths": spend_hist.MIN_MONTHS,
              "categories": [], "rigidity": {}, "channels": [], "coverageGap": [],
              "deviation": None}
-    if last_recon:
-        spend["categories"] = spend_hist.load_categories(last_recon)
-        spend["rigidity"] = spend_hist.rigidity_split(last_recon)
-        spend["channels"] = spend_hist.load_channels(last_recon)
-        spend["coverageGap"] = spend_hist.coverage_gap(last_recon)
-        spend["deviation"] = spend_hist.deviation(last_recon)
+    # byMonth:每个有切分数据的月份都带上,面板可直接切月份看详情(数据量=月数×~30 行,很小)。
+    # 顶层 categories/rigidity/... 仍是「最后一个已对账月」,作为默认展示与旧版兼容。
+    spend["byMonth"] = {m: {"categories": spend_hist.load_categories(m),
+                            "rigidity": spend_hist.rigidity_split(m),
+                            "channels": spend_hist.load_channels(m),
+                            "coverageGap": spend_hist.coverage_gap(m),
+                            "deviation": spend_hist.deviation(m)}
+                        for m in spend_hist.months_with_data()}
+    if last_recon and last_recon in spend["byMonth"]:
+        spend.update(spend["byMonth"][last_recon])
         # 渠道没导全 → 进告警带(义务内容沉底,不占观赏区)
         if spend["coverageGap"]:
             alerts.append(("🟡", "账单渠道未覆盖 " + "、".join(spend["coverageGap"])

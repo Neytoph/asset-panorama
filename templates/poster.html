@@ -556,7 +556,9 @@
   </div>
 </div>
 <div class="blk" id="spend-blk" style="margin-top:24px;display:none">
-  <div class="sec-h">支出构成 <small id="spend-sub">其他实际支出花在哪 · 对账月切分</small></div>
+  <div class="sec-h">支出构成 <small id="spend-sub">其他实际支出花在哪 · 对账月切分</small>
+    <select id="spend-month" style="margin-left:auto;font:inherit;font-size:12px;padding:3px 8px;
+      border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink)"></select></div>
   <div class="pad" id="spend"></div>
 </div>
 </section>
@@ -1714,10 +1716,24 @@ safe('再平衡执行单', function(){
    导漏账单只让「未归类」变大,总量层不受影响——所以这块是自愿的、增量的。
    趋势/偏离归因要 ≥3 个已对账月才有意义,不够就不渲染,不在面板上挂单点折线。 */
 safe('支出构成', function(){
-  const S = D.spend; if (!S || !S.month || !(S.categories||[]).length) return;
+  const SP = D.spend; if (!SP || !SP.month || !(SP.categories||[]).length) return;
   const blk = document.getElementById('spend-blk'), el = document.getElementById('spend');
+  const sel = document.getElementById('spend-month');
   if (!blk || !el) return;
   blk.style.display = '';
+  // 月份切换器:byMonth 里每个已对账月的切分都在,切换只是重画,不重新取数
+  const months = Object.keys(SP.byMonth||{}).sort().reverse();
+  if (sel){
+    sel.innerHTML = (months.length ? months : [SP.month])
+      .map(m=>`<option value="${m}"${m===SP.month?' selected':''}>${m}</option>`).join('');
+    sel.style.display = months.length > 1 ? '' : 'none';
+    sel.onchange = () => draw(sel.value);
+  }
+  draw(SP.month);
+
+  function draw(month){
+  const S = Object.assign({}, SP, (SP.byMonth||{})[month] || {}, {month: month});
+  if (!(S.categories||[]).length) { el.innerHTML = '<div class="note">该月还没有支出切分数据。</div>'; return; }
   // 这块的金额都是几百~几千,走 wan() 会显示成「0.3万」等于没信息;演示脱敏照样要遮
   const yuan = v => window._privacy ? '¥***' : '¥' + Math.round(v).toLocaleString();
   // 绿=可压缩(弹性,有腾挪空间) · 红=砍不掉(刚性) —— 颜色读的是「余地」不是「好坏」
@@ -1789,6 +1805,7 @@ safe('支出构成', function(){
       不需要你每月标注哪笔算一次性。</div>`;
   }
   el.innerHTML = html;
+  }
 });
 
 /* 现金流月账 */
