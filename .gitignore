@@ -71,3 +71,6 @@ theme-preview.html
 
 # 月度对账复盘:含真实金额/商户/人名/医疗信息,禁止进公开仓库
 docs/monthly-review-*.md
+
+# 对账 SOP:含账户尾号与渠道清单,禁止进公开仓库
+docs/reconciliation-sop.md

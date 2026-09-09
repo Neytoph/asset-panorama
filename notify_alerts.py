@@ -18,6 +18,11 @@ SUB_DAYS = (7, 3, 1)   # 保险档位按频率由 insurance.reminder_days 给（
 MANUAL_STALE_DAYS = 14   # 手动账户超过这么多天没更新 → 进待办
 TODO_EVERY_DAYS = 3      # 待办通知每 3 天弹一次(避免连续轰炸,面板横幅是每天都在的)
 
+# 月度对账:3 号起催(账单未出全时不催),弹到锁定为止。步骤/去重规则见 docs/reconciliation-sop.md
+RECON_START_DAY = 3
+RECON_EVERY_DAYS = 2     # 对账是每月唯一必做的事,比普通待办催得勤
+RECON_CHANNELS = "微信·支付宝·招行储蓄卡·招行信用卡·美团·农行6085·公积金"
+
 
 def collect_notifications(today=None):
     today = today or date.today()
@@ -47,6 +52,17 @@ def collect_notifications(today=None):
     return out
 
 
+def recon_pending(today=None):
+    """上月是否还没锁定对账。月初前两天不催——账单还没出全。"""
+    today = today or date.today()
+    if today.day < RECON_START_DAY:
+        return None
+    prev = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    done = any(r.get("月份") == prev and r.get("已对账") == "是"
+               for r in storage.load_table("cashflow_history", []))
+    return None if done else prev
+
+
 def collect_todos(today=None):
     """管家待办:手动值过期 / 上月未对账 / 台账数量不一致 → 合并为一条通知。"""
     today = today or date.today()
@@ -63,10 +79,8 @@ def collect_todos(today=None):
     if stale:
         todos.append("手动值过期:" + "、".join(stale))
     # ② 上月尚未月度对账(月初前两天不催,账单未出全)
-    prev = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
-    if today.day >= 3 and not any(
-            r.get("月份") == prev and r.get("已对账") == "是"
-            for r in storage.load_table("cashflow_history", [])):
+    prev = recon_pending(today)
+    if prev:
         todos.append(f"{prev} 未对账(面板「月度对账」Tab)")
     # ③ 台账推演数量 vs 实际持仓
     led = defaultdict(float)
@@ -104,6 +118,13 @@ if __name__ == "__main__":
         print(f"🔔 {title}: {body}")
     if not msgs:
         print("今日无到期提醒")
+    # 对账单独弹一条:它是每月唯一必做的事,混在待办里会被别的项挤掉
+    prev = recon_pending()
+    if prev:
+        body = f"导出这几家的上月账单:{RECON_CHANNELS} · 步骤见 docs/reconciliation-sop.md"
+        if date.today().toordinal() % RECON_EVERY_DAYS == 0:
+            notify(f"🧾 {prev} 还没对账", body)
+        print(f"🧾 {prev} 还没对账:{body}")
     todos = collect_todos()
     if todos:
         if date.today().toordinal() % TODO_EVERY_DAYS == 0:
