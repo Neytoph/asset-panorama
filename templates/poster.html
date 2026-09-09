@@ -1787,9 +1787,12 @@ safe('支出构成', function(){
       + `</div>`;
   }
   html += `</div></div>`;   // 关闭 渠道列 + 两列容器
+  // 「没导账单」≠「金额没算」:钱包账单里带着「用哪张卡付的」,所以卡的消费大多已从钱包侧计入;
+  // 真正缺的是不走微信/支付宝的独立刷卡。文案要说清楚,否则会被误读成「这张卡凭空冒出来」。
   if ((S.coverageGap||[]).length)
-    html += `<div class="note" style="border-color:var(--red)">⚠ <b>${esc(S.coverageGap.join('、'))}</b> 的账单没导——
-      这些渠道的消费没算进来,上面的构成偏低。补导后重新对账即可修正。</div>`;
+    html += `<div class="note" style="border-color:var(--red)">⚠ <b>${esc(S.coverageGap.join('、'))}</b> 的账单没单独导——
+      上面这些金额是从微信/支付宝账单的「支付方式」认出来的,<b>已经算进构成里了</b>;
+      缺的是<b>不走钱包的独立刷卡</b>那部分。补导该渠道账单后重新对账即可补齐。</div>`;
 
   // 偏离归因:本月 vs 近 N 月中位数,自动指出「这个月为什么高」,不用人工标一次性。
   if (S.deviation){
